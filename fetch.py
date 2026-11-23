@@ -7,6 +7,8 @@ wipes the dashboard. Failures are listed in data/fetch_log.json.
 """
 import io
 import json
+import signal
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,7 +36,8 @@ def fetch_fred(series_id: str) -> pd.Series:
 
 def fetch_yahoo(ticker: str) -> pd.Series:
     import yfinance as yf
-    df = yf.download(ticker, start=START, interval="1d", progress=False, auto_adjust=False)
+    df = yf.download(ticker, start=START, interval="1d", progress=False, auto_adjust=False,
+                     threads=False, timeout=30)
     if df.empty:
         raise ValueError("no rows returned")
     close = df["Close"]
@@ -44,13 +47,36 @@ def fetch_yahoo(ticker: str) -> pd.Series:
     return close.dropna().rename("value")
 
 
+PER_SERIES_SECONDS = 90  # give up on one series after this long and keep its old file
+
+
+class TimedOut(Exception):
+    pass
+
+
+def with_time_limit(fn, *args):
+    """Run fn(*args) but stop waiting after PER_SERIES_SECONDS."""
+    if hasattr(signal, "SIGALRM") and threading.current_thread() is threading.main_thread():  # Linux / macOS / GitHub
+        def _raise(signum, frame):
+            raise TimedOut(f"took longer than {PER_SERIES_SECONDS}s")
+        old = signal.signal(signal.SIGALRM, _raise)
+        signal.alarm(PER_SERIES_SECONDS)
+        try:
+            return fn(*args)
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old)
+    return fn(*args)  # Windows: no alarm; requests/yfinance timeouts still apply
+
+
 def main() -> None:
     log = {"run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "ok": [], "failed": {}}
     for name, spec in RAW.items():
         if spec["source"] == "manual":
             continue
         try:
-            s = fetch_fred(spec["id"]) if spec["source"] == "fred" else fetch_yahoo(spec["id"])
+            fn = fetch_fred if spec["source"] == "fred" else fetch_yahoo
+            s = with_time_limit(fn, spec["id"])
             s.rename("value").to_frame().to_csv(RAW_DIR / f"{name}.csv", index_label="date")
             log["ok"].append(name)
             print(f"ok      {name:8s} {spec['id']:18s} {len(s):6d} rows, last {s.index.max().date()}")
