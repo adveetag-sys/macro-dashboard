@@ -1,5 +1,5 @@
 {
-  "run_at": "2026-11-23T10:20:10+00:00",
+  "run_at": "2026-11-23T10:54:13+00:00",
   "ok": [
     "payems",
     "unrate",
@@ -28,7 +28,8 @@
     "gold",
     "silver",
     "dxy",
-    "invix"
+    "invix",
+    "fii_dii"
   ],
   "failed": {}
 }
