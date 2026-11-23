@@ -139,17 +139,21 @@ LEADERS = {  # key: (label, unit, slider min, max, step, help)
     "brent": ("Brent oil", "%", -50.0, 50.0, 1.0, "price change"),
 }
 MARKETS = {  # key: (label, how measured, unit, slider min, max, step)
-    "us10": ("US 10Y yield", "diff", "pts", -1.5, 1.5, 0.05),
-    "dxy":  ("Dollar index (DXY)", "pct", "%", -10.0, 10.0, 0.5),
-    "sp":   ("S&P 500 (global mood)", "pct", "%", -30.0, 30.0, 1.0),
+    "us10": ("US 10Y yield", "diff", "pts", -1.5, 1.5, 0.01),
+    "dxy":  ("Dollar index (DXY)", "pct", "%", -10.0, 10.0, 0.1),
+    "sp":   ("S&P 500 (global mood)", "pct", "%", -30.0, 30.0, 0.5),
 }
-DRIVERS = {**MARKETS, "brent": ("Brent oil", "pct", "%", -50.0, 50.0, 1.0)}  # step-2 inputs
-TARGETS = {  # key: (label, how measured, unit, note)
+DRIVERS = {**MARKETS, "brent": ("Brent oil", "pct", "%", -50.0, 50.0, 1.0)}  # US markets + oil
+INDIA = {  # step-3 sliders: key: (label, how measured, unit, slider min, max, step, help)
+    "inr":   ("USD/INR", "pct", "%", -10.0, 10.0, 0.1, "+ = rupee weaker"),
+    "inCpi": ("India CPI inflation", "diff", "pts", -3.0, 3.0, 0.05, "change in the yearly inflation rate"),
+    "rbi":   ("RBI repo rate", "diff", "pts", -1.5, 1.5, 0.25, "+0.25 = one hike; your call, it does not follow the other sliders"),
+}
+FOLLOW = ("inr", "inCpi")  # India sliders that move with the US markets; the repo is left to you
+TARGETS = {  # final results: key: (label, how measured, unit, note)
     "nifty": ("Nifty", "pct", "%", ""),
-    "inr":   ("Rupee (USD/INR)", "pct", "%", "+ = rupee weaker"),
     "fii":   ("FII flows", "sum", "₹ cr", "total over the 3 months"),
     "in10y": ("India 10Y yield", "diff", "pts", ""),
-    "inCpi": ("India CPI inflation", "diff", "pts", ""),
 }
 CRASHES = (("2008-09", "2009-06"), ("2020-03", "2021-06"))  # left out of step 1: COVID swung jobs by millions
 
@@ -198,20 +202,28 @@ def fit_leaders(vals, start="2003-01"):
     return models, L
 
 
-def fit_what_if(vals, start="2005-01"):
-    """Step 2: for each India target, a least-squares fit of its 3-month move on the US markets' and oil's
-    3-month moves over the same window, every month since `start`. Returns betas, R² and the typical miss."""
+def _ols(d, cols):
+    A = np.column_stack([np.ones(len(d)), d[cols].values])
+    coef, *_ = np.linalg.lstsq(A, d["y"].values, rcond=None)
+    resid = d["y"].values - A @ coef
+    return {"const": coef[0], "beta": dict(zip(cols, coef[1:])), "resid_sd": resid.std(ddof=len(coef)),
+            "r2": 1 - resid.var() / d["y"].var(), "n": len(d), "since": d.index[0]}
+
+
+def fit_india(vals, start="2005-01"):
+    """Step 2: how the rupee and India CPI have moved with the US markets and oil (3-month moves, same window)."""
     X = three_month_moves(vals, DRIVERS)
+    Y = three_month_moves(vals, {k: INDIA[k] for k in FOLLOW})
+    return {t: _ols(pd.concat([X, Y[t].rename("y")], axis=1).loc[start:].dropna(), list(DRIVERS)) for t in FOLLOW}
+
+
+def fit_what_if(vals, start="2005-01"):
+    """Step 3: Nifty, FII flows and India 10Y on the US markets, oil, the rupee, India CPI and the repo rate,
+    all as 3-month moves over the same window, every month since `start`."""
+    X = pd.concat([three_month_moves(vals, DRIVERS), three_month_moves(vals, INDIA)], axis=1)
     Y = three_month_moves(vals, TARGETS)
-    models = {}
-    for t in TARGETS:
-        d = pd.concat([X, Y[t].rename("y")], axis=1).loc[start:].dropna()
-        A = np.column_stack([np.ones(len(d)), d[list(DRIVERS)].values])
-        coef, *_ = np.linalg.lstsq(A, d["y"].values, rcond=None)
-        resid = d["y"].values - A @ coef
-        r2 = 1 - resid.var() / d["y"].var()
-        models[t] = {"const": coef[0], "beta": dict(zip(DRIVERS, coef[1:])), "resid_sd": resid.std(ddof=len(coef)),
-                     "r2": r2, "n": len(d), "since": d.index[0]}
+    cols = list(DRIVERS) + list(INDIA)
+    models = {t: _ols(pd.concat([X, Y[t].rename("y")], axis=1).loc[start:].dropna(), cols) for t in TARGETS}
     return models, X
 
 
@@ -220,25 +232,18 @@ def implied_markets(lead_models, leaders):
     return {m: sum(mdl["beta"][k] * leaders.get(k, 0.0) for k in LEADERS) for m, mdl in lead_models.items()}
 
 
-def what_if(models, lead_models, leaders, extra):
-    """Expected 3-month move of each India target. leaders = leader slider moves; extra = market moves on top
-    of what the leaders imply. Returns the market moves used, and for each target the middle, a 68% range and
-    how much each slider contributed."""
-    implied = implied_markets(lead_models, leaders)
-    markets = {m: implied[m] + extra.get(m, 0.0) for m in MARKETS}
-    use_lead = any(abs(leaders.get(k, 0.0)) > 0 for k in LEADERS if k != "brent")
+def implied_india(india_models, markets, brent):
+    """Rupee and India CPI moves the US markets and oil imply (step 2), without the usual drift."""
+    x = {**markets, "brent": brent}
+    return {t: sum(m["beta"][k] * x.get(k, 0.0) for k in DRIVERS) for t, m in india_models.items()}
+
+
+def what_if(models, inputs):
+    """Step 3: expected 3-month move of each result for the given market, oil and India moves,
+    with a 68% range and each input's part."""
     out = {}
     for t, m in models.items():
-        parts = {}
-        for k in LEADERS:  # leader -> each market -> India, plus oil's own direct effect
-            via = sum(m["beta"][mk] * lead_models[mk]["beta"][k] for mk in MARKETS) * leaders.get(k, 0.0)
-            parts[k] = via + (m["beta"]["brent"] * leaders.get(k, 0.0) if k == "brent" else 0.0)
-        for mk in MARKETS:
-            parts["x_" + mk] = m["beta"][mk] * extra.get(mk, 0.0)
+        parts = {k: m["beta"][k] * inputs.get(k, 0.0) for k in m["beta"]}
         mid = m["const"] + sum(parts.values())
-        var = m["resid_sd"] ** 2
-        if use_lead:  # step 1 is uncertain too
-            var += sum((m["beta"][mk] * lead_models[mk]["resid_sd"]) ** 2 for mk in MARKETS)
-        sd = np.sqrt(var)
-        out[t] = {"mid": mid, "lo": mid - sd, "hi": mid + sd, "parts": parts, "base": m["const"]}
-    return {"implied": implied, "markets": markets, "india": out}
+        out[t] = {"mid": mid, "lo": mid - m["resid_sd"], "hi": mid + m["resid_sd"], "parts": parts, "base": m["const"]}
+    return out
