@@ -43,6 +43,7 @@ RAW = {
     "gdp_in_yy": {"source": "fred", "id": "INDGDPRQPSMEI",   "agg": "last"},  # India real GDP, % y/y (OECD, older years)
     "cpi_in":   {"source": "fred", "id": "INDCPIALLMINMEI", "agg": "last"},  # India CPI index
     "fx_in":    {"source": "fred", "id": "TRESEGINM052N",   "agg": "last"},  # India reserves excl. gold, $ millions
+    "cad_imf":  {"source": "fred", "id": "INDBCAGDPBP6PT",  "agg": "last"},  # India current account % GDP, IMF annual, fiscal year (2012 = Apr 2012-Mar 2013)
 
     # Yahoo Finance (via yfinance; unofficial, may need fixing now and then)
     "nifty":    {"source": "yahoo", "id": "^NSEI",     "agg": "last"},
@@ -124,7 +125,7 @@ INDICATORS = [
               ".reindex(r.index).ffill(limit=3)).combine_first(r.gdp_in_yy.ffill(limit=3))",
          fmt="{:.1f}%", rule={"type": "level", "good_above": 7.0, "bad_below": 5.5}),
     dict(k="cad", label="India current account", stage="R", topic="incpi", top=False, sub="% of GDP",
-         calc="r.cad_in", fmt="{:+.1f}%", rule={"type": "level", "good_above": -1.5, "bad_below": -2.5}),
+         calc="r.cad_in.combine_first(r.cad_imf.shift(3).ffill(limit=11).loc[:'2024-03'].reindex(r.index))", fmt="{:+.1f}%", rule={"type": "level", "good_above": -1.5, "bad_below": -2.5}),
     # 4 Moves last
     dict(k="nifty", label="Nifty 50", stage="F", topic="nifty", top=True, sub="India large-caps",
          calc="r.nifty", fmt="{:,.0f}", rule={"type": "change", "months": 3, "polarity": +1, "pct": True}),

@@ -113,7 +113,8 @@ INFO = {
     ),
     "fii": dict(
         what="Net buying or selling of Indian shares by foreign institutional investors (also called FPIs) in the cash market during the month.",
-        source="NSE provisional daily data, summed by month (via tapetide.com). Filled in data/manual/flows.csv. Available from Jan 2014.",
+        source="From 2014: NSE provisional daily data summed by month (via tapetide.com). 2000–2013: SEBI's monthly net FII equity investment (via equitymaster.com), "
+               "which is measured slightly differently. Filled in data/manual/flows.csv.",
         read="Positive = foreigners are buying, negative = selling. ₹±10,000 crore in a month is a normal swing. Selling above ₹40,000 crore in a month is heavy. "
              "October 2024 and March 2026 saw selling of more than ₹1 lakh crore.",
         path="FII selling → they convert rupees to dollars → rupee weakens → index heavyweights (banks, large caps) fall. "
@@ -177,7 +178,8 @@ INFO = {
     "cad": dict(
         what="India's current account balance: everything India earns from abroad (exports, services, remittances) minus everything it pays abroad (imports, interest, dividends). "
              "A negative number is a deficit.",
-        source="RBI quarterly balance of payments release, about 2–3 months after each quarter. Filled in data/manual/rbi.csv.",
+        source="RBI quarterly balance of payments release, about 2–3 months after each quarter, filled in data/manual/rbi.csv. "
+               "Quarters without a figure use the IMF's annual (April–March) number from FRED, so older history moves in yearly steps.",
         read="Around −1% to −2% of GDP is manageable. Below −2.5% is a warning. It was close to −5% in 2012–13, which is why the 2013 taper tantrum hit India so hard. "
              "A positive number is a surplus.",
         path="Bigger deficit → India needs more foreign money every month → more exposed to FII outflows → rupee weakens faster in a shock.",
