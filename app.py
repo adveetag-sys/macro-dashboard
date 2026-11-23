@@ -9,6 +9,8 @@ import streamlit as st
 
 from config import INDICATORS, PULSE, STAGES, TRENDS
 from topics import TOPICS
+from events import EVENTS, KEY
+from indicator_info import INFO
 
 st.set_page_config(page_title="Macro Dashboard · USA → India", layout="wide")
 
@@ -73,6 +75,24 @@ def asof_note(k, month):
     return f"as of {label_month(a)}" if a and a != month else ""
 
 
+def val_at(k, month):
+    return vals.loc[month, k] if month in vals.index else np.nan
+
+
+def sig_at(k, month):
+    return sigs.loc[month, k] if month in sigs.index else ""
+
+
+SCORED = [i["k"] for i in INDICATORS if i["rule"]["type"] != "neutral"]
+
+
+def match_score(m1, m2):
+    """Share of indicators that carry the same headwind/tailwind/neutral label in both months."""
+    both = [k for k in SCORED if sig_at(k, m1) and sig_at(k, m2)]
+    same = [k for k in both if sig_at(k, m1) == sig_at(k, m2)]
+    return (len(same) / len(both) if both else 0.0), len(same), len(both)
+
+
 def first_of_topic(topic):
     return next(i["k"] for i in INDICATORS if i["topic"] == topic)
 
@@ -84,7 +104,7 @@ def open_page(k):
 CHART_CONFIG = {"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "showTips": False}
 
 
-def sparkline(series, color, height=70, marker=None, k=None):
+def sparkline(series, color, height=70, marker=None, k=None, shade=None):
     """Line chart: hover shows month + value. Zoom, pan and drag are switched off."""
     s = series.copy()
     s.index = pd.PeriodIndex(s.index, freq="M").to_timestamp()
@@ -92,6 +112,9 @@ def sparkline(series, color, height=70, marker=None, k=None):
     fig = go.Figure(go.Scatter(
         x=s.index, y=s.values, mode="lines", line=dict(color=color, width=2), connectgaps=False,
         customdata=labels, hovertemplate="%{x|%b %Y}<br><b>%{customdata}</b><extra></extra>"))
+    for a, b, c in shade or []:
+        fig.add_vrect(x0=pd.Period(a, "M").to_timestamp(), x1=pd.Period(b, "M").to_timestamp("M"),
+                      fillcolor=c, opacity=0.18, line_width=0, layer="below")
     if marker is not None:
         fig.add_vline(x=pd.Period(marker, "M").to_timestamp(), line=dict(color="#FCD34D", width=1, dash="dot"))
     big = height > 80
@@ -114,8 +137,9 @@ top_l, top_r = st.columns([3, 2])
 with top_l:
     st.markdown(f"<p class='cap'>Data to {label_month(months[-1])} · updated {meta.get('built_at', '?')[:10]}</p>", unsafe_allow_html=True)
     st.title(f"Macro Dashboard · {label_month(ss.month)}")
-    ss.view = st.radio("View", ["Dashboard", "Understand the flow"], horizontal=True, label_visibility="collapsed",
-                       index=0 if ss.view == "Dashboard" else 1)
+    VIEWS = ["Dashboard", "Understand the flow", "Past events", "Compare to past events"]
+    ss.view = st.radio("View", VIEWS, horizontal=True, label_visibility="collapsed",
+                       index=VIEWS.index(ss.view) if ss.view in VIEWS else 0)
 with top_r:
     years = sorted({m[:4] for m in months}, reverse=True)
     c1, c2 = st.columns(2)
@@ -141,15 +165,32 @@ def detail_page(k):
     a.caption(f"{ind['sub']} · updates {t['freq']}" + (f" · latest reading {asof_note(k, m)}" if asof_note(k, m) else ""))
     b.markdown(f"<p class='cap'>On {label_month(m)}</p><div class='big'>{fmt(k, row_v[k])}</div>{pill(row_s[k])} for India",
                unsafe_allow_html=True)
-    c = st.columns(3)
-    for col, title, text in zip(c, ["What it is", "How it works", "Why India cares"], [t["what"], t["how"], t["india"]]):
-        with col.container(border=True):
-            st.markdown(f"<p class='cap'>{title}</p>", unsafe_allow_html=True)
-            st.write(text)
+    info = INFO.get(k, {})
+    c = st.columns(2)
+    with c[0].container(border=True):
+        st.markdown("<p class='cap'>What it is</p>", unsafe_allow_html=True)
+        st.write(info.get("what", t["what"]))
+        st.markdown("<p class='cap'>Where it comes from</p>", unsafe_allow_html=True)
+        st.write(info.get("source", ""))
+    with c[1].container(border=True):
+        st.markdown("<p class='cap'>How to read it</p>", unsafe_allow_html=True)
+        st.write(info.get("read", t["how"]))
+        st.markdown("<p class='cap'>What to watch</p>", unsafe_allow_html=True)
+        st.write(info.get("watch", ""))
+    with st.container(border=True):
+        st.markdown("<p class='cap'>How it reaches India</p>", unsafe_allow_html=True)
+        st.write(info.get("path", t["india"]))
     left, right = st.columns([3, 2])
     with left.container(border=True):
-        st.markdown("<p class='cap'>Full history since 1995 · dotted line = selected month</p>", unsafe_allow_html=True)
-        st.plotly_chart(sparkline(vals[k].dropna(), STAGE_COLOR[ind["stage"]], height=320, marker=m, k=k), width="stretch", config=CHART_CONFIG)
+        span = st.radio("Range", ["Last 10 years", "Full history"], horizontal=True, label_visibility="collapsed", key=f"span-{k}")
+        s_all = vals[k].dropna()
+        if span == "Last 10 years":
+            s_all = s_all[s_all.index >= str(int(m[:4]) - 10) + m[4:]]
+            s_all = s_all[s_all.index <= months[-1]]
+        shade = [(e["runup"], e["worst"], e["color"]) for e in EVENTS.values()
+                 if len(s_all) and e["worst"] >= s_all.index[0] and e["runup"] <= s_all.index[-1]]
+        st.markdown("<p class='cap'>Dotted line = selected month · shaded = past events (run-up to worst)</p>", unsafe_allow_html=True)
+        st.plotly_chart(sparkline(s_all, STAGE_COLOR[ind["stage"]], height=320, marker=m, k=k, shade=shade), width="stretch", config=CHART_CONFIG)
         counts = sigs[k].value_counts()
         st.caption(f"Since 1995: headwind in {counts.get('H', 0)} months, tailwind in {counts.get('T', 0)}, neutral in {counts.get('N', 0)}.")
     with right.container(border=True):
@@ -159,6 +200,18 @@ def detail_page(k):
                              "Value": [fmt(k, vals.loc[x, k]) for x in months[max(0, idx - 23): idx + 1]],
                              "For India": [SIG_TEXT.get(sigs.loc[x, k], "") for x in months[max(0, idx - 23): idx + 1]]})
         st.dataframe(hist.iloc[::-1], hide_index=True, width="stretch", height=320)
+    with st.container(border=True):
+        st.markdown("<p class='cap'>In past events</p>", unsafe_allow_html=True)
+        rows = []
+        for e in EVENTS.values():
+            rows.append({"Event": e["name"],
+                         "Run-up": f"{fmt(k, val_at(k, e['runup']))}  ({label_month(e['runup'])})",
+                         "Worst point": f"{fmt(k, val_at(k, e['worst']))}  ({label_month(e['worst'])})",
+                         "For India at worst": SIG_TEXT.get(sig_at(k, e["worst"]), "")})
+        rows.append({"Event": "Selected month", "Run-up": "", "Worst point": f"{fmt(k, row_v[k])}  ({label_month(m)})",
+                     "For India at worst": SIG_TEXT.get(row_s[k], "")})
+        df = pd.DataFrame(rows)
+        st.dataframe(df, hide_index=True, width="stretch")
     with st.container(border=True):
         st.markdown("<p class='cap'>In the chain</p>", unsafe_allow_html=True)
         p, ch = st.columns(2)
@@ -274,7 +327,7 @@ if ss.view == "Dashboard":
             st.markdown(f"**{e['date']:%d %b %Y}** · {e['event']}")
 
 # ---------- flow view ----------
-else:
+elif ss.view == "Understand the flow":
     st.caption("Change flows from the top down. Pick a box below the chart to open its page.")
     order = ["usdata", "brent", "fed", "incpi", "yields", "dollar", "metals", "usstocks", "fii", "inr", "rbi", "nifty", "vix"]
     fill = {"T": "#0F3B2A", "H": "#46161B", "N": "#1C212C", "": "#1C212C"}
@@ -298,5 +351,108 @@ else:
         ss.open, ss.view = first_of_topic(pick), "Dashboard"
         st.rerun()
 
-st.caption(f"Sources: FRED, Yahoo Finance, RBI, NSDL. Missing indicators: {', '.join(meta.get('missing_indicators', [])) or 'none'}. "
+
+# ---------- past events ----------
+elif ss.view == "Past events":
+    keys = list(EVENTS)
+    ek = st.radio("Event", keys, horizontal=True, format_func=lambda x: EVENTS[x]["name"], label_visibility="collapsed")
+    e = EVENTS[ek]
+    a, b = st.columns([3, 2])
+    a.header(e["name"])
+    a.markdown(f"**Trigger:** {e['trigger']}")
+    b.markdown(f"<p class='cap'>Timeline</p>"
+               f"<div class='rowline'><span>Run-up</span><b>{label_month(e['runup'])}</b></div>"
+               f"<div class='rowline'><span>Worst for India</span><b>{label_month(e['worst'])}</b></div>"
+               f"<div class='rowline'><span>Calmer again</span><b>{label_month(e['calm'])}</b></div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown("<p class='cap'>What happened</p>", unsafe_allow_html=True)
+        st.write(e["story"])
+    st.markdown("<p class='cap'>How the chain fired</p>", unsafe_allow_html=True)
+    cc = st.columns(4)
+    for col, (stage, (title, text)) in zip(cc, zip(STAGES, e["chain"])):
+        with col.container(border=True):
+            st.markdown(f"<div class='stagehead' style='border-color:{STAGE_COLOR[stage]}'><b>{title}</b></div>", unsafe_allow_html=True)
+            st.write(text)
+    with st.container(border=True):
+        st.markdown("<p class='cap'>Key numbers · run-up vs worst point · and today</p>", unsafe_allow_html=True)
+        rows = []
+        for k in KEY:
+            v1, v2 = val_at(k, e["runup"]), val_at(k, e["worst"])
+            rows.append({"Indicator": IND[k]["label"], f"Run-up · {label_month(e['runup'])}": fmt(k, v1),
+                         f"Worst · {label_month(e['worst'])}": fmt(k, v2), "For India at worst": SIG_TEXT.get(sig_at(k, e["worst"]), ""),
+                         f"Today · {label_month(m)}": fmt(k, row_v[k])})
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        st.caption("— means no data for that month (for example, FII data starts in 2014 and India VIX in 2008).")
+    st.markdown("<p class='cap'>Around the event · shaded = run-up to worst</p>", unsafe_allow_html=True)
+    lo = (pd.Period(e["runup"], "M") - 12).strftime("%Y-%m")
+    hi = (pd.Period(e["calm"], "M") + 6).strftime("%Y-%m")
+    grid = st.columns(4)
+    for n, k in enumerate(KEY):
+        sk = vals.loc[(vals.index >= lo) & (vals.index <= hi), k].dropna()
+        with grid[n % 4].container(border=True):
+            st.markdown(f"<p class='cap'>{IND[k]['label']}</p>", unsafe_allow_html=True)
+            if len(sk) > 2:
+                st.plotly_chart(sparkline(sk, e["color"], height=150, k=k, shade=[(e["runup"], e["worst"], e["color"])]),
+                                width="stretch", config=CHART_CONFIG, key=f"ev-{ek}-{k}")
+            else:
+                st.caption("No data for this period")
+    l1, l2 = st.columns(2)
+    with l1.container(border=True):
+        st.markdown("<p class='cap'>Lesson</p>", unsafe_allow_html=True)
+        st.write(e["lesson"])
+    with l2.container(border=True):
+        st.markdown("<p class='cap'>Warning signs to watch today</p>", unsafe_allow_html=True)
+        st.write(e["watch"])
+
+# ---------- compare ----------
+else:
+    st.subheader(f"{label_month(m)} compared with five past events")
+    st.caption("Each indicator is labelled tailwind, neutral or headwind for India by the same rules every month. "
+               "The match % is the share of indicators carrying the same label in both months. "
+               "Run-up = the calm before; worst = the month India was hit hardest. Pick another month at the top to compare it instead.")
+    score_rows = []
+    for ek, e in EVENTS.items():
+        r, rs, rn = match_score(m, e["runup"])
+        w, ws, wn = match_score(m, e["worst"])
+        score_rows.append(dict(key=ek, name=e["name"], color=e["color"], r=r, rs=rs, rn=rn, w=w, ws=ws, wn=wn))
+    best = max(score_rows, key=lambda x: max(x["r"], x["w"]))
+    which = "run-up" if best["r"] >= best["w"] else "worst point"
+    with st.container(border=True):
+        st.markdown(f"<p class='cap'>Closest match</p><div class='big' style='font-size:22px'>{best['name']} · {which} "
+                    f"({max(best['r'], best['w']):.0%})</div>", unsafe_allow_html=True)
+    fig = go.Figure()
+    names = [x["name"] for x in score_rows]
+    fig.add_bar(y=names, x=[x["r"] * 100 for x in score_rows], name="Like the run-up", orientation="h", marker_color="#60A5FA",
+                customdata=[f"{x['rs']} of {x['rn']}" for x in score_rows], hovertemplate="%{y}<br>Run-up: <b>%{x:.0f}%</b> (%{customdata})<extra></extra>")
+    fig.add_bar(y=names, x=[x["w"] * 100 for x in score_rows], name="Like the worst point", orientation="h", marker_color="#F87171",
+                customdata=[f"{x['ws']} of {x['wn']}" for x in score_rows], hovertemplate="%{y}<br>Worst: <b>%{x:.0f}%</b> (%{customdata})<extra></extra>")
+    fig.update_layout(barmode="group", height=330, margin=dict(l=0, r=0, t=10, b=0), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                      xaxis=dict(range=[0, 100], ticksuffix="%", gridcolor="#1F2A44", fixedrange=True), yaxis=dict(autorange="reversed", fixedrange=True),
+                      dragmode=False, legend=dict(orientation="h", y=1.12), hoverlabel=dict(bgcolor="#111A2E", font=dict(color="#E5E7EB")))
+    st.plotly_chart(fig, width="stretch", config=CHART_CONFIG)
+
+    pick = st.radio("Side by side with", list(EVENTS), horizontal=True, format_func=lambda x: EVENTS[x]["name"],
+                    index=list(EVENTS).index(best["key"]))
+    e = EVENTS[pick]
+
+    def cell(k, month):
+        return f"{fmt(k, val_at(k, month))}<br>{pill(sig_at(k, month))}"
+
+    html = ["<table style='width:100%;border-collapse:collapse;font-size:14px'>",
+            "<tr style='text-align:left;color:#A3ADBF'><th style='padding:6px'>Indicator</th>"
+            f"<th>Today · {label_month(m)}</th><th>Run-up · {label_month(e['runup'])}</th><th>Worst · {label_month(e['worst'])}</th><th>Same as</th></tr>"]
+    for stage in STAGES:
+        html.append(f"<tr><td colspan=5 style='padding:10px 6px 4px;color:{STAGE_COLOR[stage]};font-weight:700'>{STAGES[stage][1]}</td></tr>")
+        for i in [i for i in INDICATORS if i["stage"] == stage and vals[i["k"]].notna().any()]:
+            k = i["k"]
+            now = sig_at(k, m)
+            same = [lbl for lbl, mo in (("run-up", e["runup"]), ("worst", e["worst"])) if now and sig_at(k, mo) == now and i["rule"]["type"] != "neutral"]
+            html.append(f"<tr style='border-top:1px solid #1F2A44'><td style='padding:6px'>{i['label']}</td><td>{cell(k, m)}</td>"
+                        f"<td>{cell(k, e['runup'])}</td><td>{cell(k, e['worst'])}</td><td class='muted'>{' + '.join(same) or '—'}</td></tr>")
+    html.append("</table>")
+    with st.container(border=True):
+        st.markdown("".join(html), unsafe_allow_html=True)
+    st.caption("Neutral-only indicators (PMI, GDP, gold, silver) are shown but not counted in the match %.")
+
+st.caption(f"Sources: FRED, Yahoo Finance, RBI, MoSPI, NSE (via tapetide). Missing indicators: {', '.join(meta.get('missing_indicators', [])) or 'none'}. "
            "Tailwind/headwind labels come from simple rules in config.py, not from a forecast.")
