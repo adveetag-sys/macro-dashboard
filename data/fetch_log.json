@@ -1,5 +1,5 @@
 {
-  "run_at": "2026-11-23T09:57:04+00:00",
+  "run_at": "2026-11-23T10:17:41+00:00",
   "ok": [
     "payems",
     "unrate",
@@ -19,6 +19,7 @@
     "gdp_in_yy",
     "cpi_in",
     "fx_in",
+    "cad_imf",
     "nifty",
     "bank",
     "sp",
