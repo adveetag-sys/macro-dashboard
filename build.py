@@ -19,6 +19,26 @@ from config import INDICATORS, RAW, START
 DATA = Path("data")
 
 
+def auto_flows_monthly() -> pd.DataFrame:
+    """Monthly FII/DII totals from the daily record fetch.py keeps (data/auto/fii_dii_daily.csv).
+    A month counts only if the record has no real gaps: it starts within the first 5 days of the month
+    and misses at most 2 weekdays (allowing for market holidays). The current month is month-to-date."""
+    path = DATA / "auto" / "fii_dii_daily.csv"
+    if not path.exists():
+        return pd.DataFrame()
+    d = pd.read_csv(path, parse_dates=["date"]).dropna().drop_duplicates("date")
+    rows = {}
+    for month, g in d.groupby(d["date"].dt.to_period("M")):
+        days = set(g["date"].dt.normalize())
+        weekdays = pd.bdate_range(month.start_time, g["date"].max())
+        missing = sum(1 for x in weekdays if x not in days)
+        if g["date"].min().day <= 5 and missing <= 2:
+            rows[month] = {"fii": g["fii_cr"].sum(), "dii": g["dii_cr"].sum()}
+        else:
+            print(f"FII/DII {month}: daily record incomplete ({len(days)} days, {missing} weekdays missing), using flows.csv")
+    return pd.DataFrame.from_dict(rows, orient="index")
+
+
 def load_raw_monthly() -> pd.DataFrame:
     months = pd.period_range(START, pd.Timestamp.today(), freq="M")
     out = pd.DataFrame(index=months)
@@ -44,8 +64,13 @@ def load_raw_monthly() -> pd.DataFrame:
         monthly = getattr(s.resample("ME"), spec.get("agg", "last"))()
         monthly.index = monthly.index.to_period("M")
         out[name] = monthly.reindex(months)
+    auto = auto_flows_monthly()
+    for col in ["fii", "dii"]:
+        if col in out and not auto.empty:
+            a = auto[col].reindex(months)
+            out[col] = a.combine_first(out[col])  # a complete automatic month replaces the manual figure
     # quarterly / slow series: carry the last known value forward a few months
-    for col in ["gdp_us", "cad_in", "repo", "pmi_us", "pmi_in", "liq"]:
+    for col in ["gdp_us", "cad_in", "repo", "pmi_us", "pmi_in", "liq", "dliq"]:
         out[col] = out[col].ffill(limit=3)
     return out
 
