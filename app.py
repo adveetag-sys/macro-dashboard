@@ -11,6 +11,7 @@ from config import INDICATORS, PULSE, STAGES, TRENDS
 from topics import TOPICS
 from events import EVENTS, KEY
 from indicator_info import INFO
+import simulator as sim
 
 EVENT_IMPACT = {
     "fomc": ("Fed decision", "Sets US rates. A hike or hawkish tone pushes US yields and the dollar up, which usually means FII selling and a weaker rupee. A cut does the reverse. India reacts the next morning."),
@@ -190,7 +191,7 @@ top_l, top_r = st.columns([3, 2])
 with top_l:
     st.markdown(f"<p class='cap'>Data to {label_month(months[-1])} · updated {meta.get('built_at', '?')[:10]}</p>", unsafe_allow_html=True)
     st.title(f"Macro Dashboard · {label_month(ss.month)}")
-    VIEWS = ["Dashboard", "Understand the flow", "Past events", "Compare to past events"]
+    VIEWS = ["Dashboard", "Understand the flow", "Past events", "Compare to past events", "Simulator"]
     ss.view = st.radio("View", VIEWS, horizontal=True, label_visibility="collapsed",
                        index=VIEWS.index(ss.view) if ss.view in VIEWS else 0)
 with top_r:
@@ -461,7 +462,7 @@ elif ss.view == "Past events":
         st.write(e["watch"])
 
 # ---------- compare ----------
-else:
+elif ss.view == "Compare to past events":
     st.subheader(f"{label_month(m)} compared with five past events")
     st.caption("Each indicator is labelled tailwind, neutral or headwind for India by the same rules every month. "
                "The match % blends two things equally: how many indicators carry the same label in both months, and how close the "
@@ -513,6 +514,203 @@ else:
     with st.container(border=True):
         st.markdown("".join(html), unsafe_allow_html=True)
     st.caption("Neutral-only indicators (PMI, GDP, gold, silver) have no label, so they count only in the numbers half of the match %.")
+
+# ---------- simulator ----------
+else:
+    st.subheader("Simulator")
+    st.caption("Three ways to think about what could come next, each built only from this dashboard's own history and each with its "
+               "track record shown. They give ranges and odds, not a prediction, and they are not trading advice. "
+               "Big shocks (2008, March 2020) sit outside anything history-based.")
+
+    @st.cache_data(show_spinner=False)
+    def sim_daily(stamp):
+        return sim.load_daily("data/raw/nifty.csv"), sim.load_daily("data/raw/invix.csv")
+
+    @st.cache_data(show_spinner="Testing the method on past years...")
+    def sim_vix_record(stamp, days):
+        n, v = sim_daily(stamp)
+        return sim.vix_track_record(n, v, days)
+
+    @st.cache_data(show_spinner=False)
+    def sim_outcomes(stamp):
+        return sim.outcomes(vals)
+
+    @st.cache_data(show_spinner="Testing the method on past years...")
+    def sim_analog_record(stamp, h):
+        return sim.analog_track_record(RANKS, sim_outcomes(stamp), h)
+
+    @st.cache_data(show_spinner=False)
+    def sim_models(stamp):
+        return sim.fit_what_if(vals)
+
+    def fmt_move(x, unit):
+        if x is None or (isinstance(x, float) and np.isnan(x)):
+            return "—"
+        return {"%": f"{x:+.1f}%", "pts": f"{x:+.2f} pts", "₹ cr": f"{'+' if x >= 0 else '−'}₹{abs(x):,.0f} cr"}[unit]
+
+    def card(title, big, lines):
+        st.markdown(f"<p class='cap'>{title}</p><div class='big' style='font-size:24px'>{big}</div>"
+                    + "".join(f"<div class='muted' style='font-size:13px'>{x}</div>" for x in lines), unsafe_allow_html=True)
+
+    t1, t2, t3 = st.tabs(["Nifty range from India VIX", "What happened next", "What if"])
+
+    # ----- 1. India VIX range
+    with t1:
+        nifty_d, vix_d = sim_daily(stamp)
+        spot, vix_now = float(nifty_d.iloc[-1]), float(vix_d.iloc[-1])
+        st.markdown("India VIX is the yearly move the options market is pricing in for Nifty. Scaled down to your time window, "
+                    "it gives the range Nifty is expected to stay inside: about 68% of the time inside 1 sigma, 95% inside 2 sigma. "
+                    "For an option expiry, pick the number of calendar days left to expiry.")
+        days = st.select_slider("Calendar days ahead", options=[1, 2, 3, 4, 5, 7, 10, 14, 21, 30, 45, 60, 90], value=7)
+        rg = sim.vix_range(spot, vix_now, days)
+        c1, c2, c3 = st.columns(3)
+        with c1.container(border=True):
+            card(f"Nifty · {nifty_d.index[-1]:%d %b %Y}", f"{spot:,.0f}", [f"India VIX {vix_now:.1f} ({vix_d.index[-1]:%d %b})"])
+        with c2.container(border=True):
+            card(f"68% range · {days} days", f"{rg['lo1']:,.0f} – {rg['hi1']:,.0f}",
+                 [f"±{rg['sigma_pct']:.1f}% · about ±{spot * rg['sigma_pct'] / 100:,.0f} points"])
+        with c3.container(border=True):
+            card(f"95% range · {days} days", f"{rg['lo2']:,.0f} – {rg['hi2']:,.0f}",
+                 [f"±{2 * rg['sigma_pct']:.1f}% · about ±{2 * spot * rg['sigma_pct'] / 100:,.0f} points"])
+
+        hist = nifty_d.loc[nifty_d.index[-1] - pd.Timedelta(days=180):]
+        t_end = nifty_d.index[-1] + pd.Timedelta(days=days)
+        steps = pd.date_range(nifty_d.index[-1], t_end, periods=30)
+        cone = [sim.vix_range(spot, vix_now, max((d - nifty_d.index[-1]).days, 0)) for d in steps]
+        fig = go.Figure()
+        for lo, hi, col, name in (("lo2", "hi2", "rgba(96,165,250,0.15)", "95% range"), ("lo1", "hi1", "rgba(96,165,250,0.30)", "68% range")):
+            fig.add_scatter(x=list(steps) + list(steps[::-1]), y=[c[hi] for c in cone] + [c[lo] for c in cone][::-1],
+                            fill="toself", fillcolor=col, line=dict(width=0), name=name, hoverinfo="skip")
+        fig.add_scatter(x=hist.index, y=hist.values, mode="lines", line=dict(color="#E5E7EB", width=2), name="Nifty",
+                        hovertemplate="%{x|%d %b %Y}<br><b>%{y:,.0f}</b><extra></extra>")
+        for key, lbl in (("hi1", "68% high"), ("lo1", "68% low"), ("hi2", "95% high"), ("lo2", "95% low")):
+            fig.add_scatter(x=[t_end], y=[rg[key]], mode="markers", marker=dict(color="#60A5FA", size=7), showlegend=False,
+                            hovertemplate=f"{lbl} by %{{x|%d %b}}<br><b>%{{y:,.0f}}</b><extra></extra>")
+        fig.update_layout(height=340, margin=dict(l=0, r=0, t=10, b=0), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                          dragmode=False, legend=dict(orientation="h", y=1.1), hoverlabel=dict(bgcolor="#111A2E", font=dict(color="#E5E7EB")),
+                          xaxis=dict(fixedrange=True, gridcolor="#1F2A44"), yaxis=dict(fixedrange=True, gridcolor="#1F2A44", tickformat=","))
+        st.plotly_chart(fig, width="stretch", config=CHART_CONFIG)
+
+        rec = sim_vix_record(stamp, days)
+        with st.container(border=True):
+            st.markdown("<p class='cap'>Track record</p>", unsafe_allow_html=True)
+            st.write(f"On every trading day since {rec['since']:%b %Y} ({rec['n']:,} days), Nifty ended {days} days later "
+                     f"inside the 1-sigma range **{rec['in1']:.0%}** of the time (theory: 68%) and inside 2 sigma **{rec['in2']:.0%}** (theory: 95%).")
+            st.caption("India VIX has usually priced in bigger moves than actually happened. That gap is what option sellers earn most of the time, "
+                       "and it disappears in sudden shocks (March 2020, election results), when moves blow through 2 sigma.")
+
+    # ----- 2. what happened next
+    with t2:
+        outs = sim_outcomes(stamp)
+        st.markdown(f"Finds the 15 past months whose readings looked most like **{label_month(m)}** across every indicator "
+                    "(same method as the Compare page's 'numbers' score), then shows what Nifty, the rupee and FII flows actually did afterwards. "
+                    "Only months whose full 12-month aftermath is known are used, and no two picks are within 3 months of each other.")
+        h = st.radio("Looking ahead", sim.HORIZONS, index=1, horizontal=True, format_func=lambda x: f"{x} months")
+        picks, dist = sim.analogs(RANKS, outs, m)
+        if len(picks) < 5:
+            st.info("Not enough earlier history to find similar months for this date. Pick a month from 2006 onwards.")
+        else:
+            c1, c2, c3 = st.columns(3)
+            for col, key, title, unit, note in ((c1, "nifty", "Nifty", "%", ""), (c2, "inr", "Rupee (USD/INR)", "%", "+ = rupee weaker"),
+                                                (c3, "fii", f"FII flows, {h}-month total", "₹ cr", "")):
+                sm = sim.summarise(outs, picks, f"{key}_{h}")
+                with col.container(border=True):
+                    if sm is None:
+                        card(title, "—", ["no data"])
+                        continue
+                    up_word = "rupee weaker" if key == "inr" else "net buying" if key == "fii" else "higher"
+                    card(f"{title} · median after {h} months", fmt_move(sm["median"], unit),
+                         [f"{up_word} in {sm['up']:.0%} of the {sm['n']} cases",
+                          f"middle 80%: {fmt_move(sm['p10'], unit)} to {fmt_move(sm['p90'], unit)}",
+                          f"worst {fmt_move(sm['lo'], unit)} · best {fmt_move(sm['hi'], unit)}"] + ([note] if note else []))
+
+            pts = outs.loc[picks, f"nifty_{h}"]
+            fig = go.Figure(go.Scatter(
+                x=pts.values, y=[1 - 2 * d for d in dist[picks]], mode="markers+text", text=[label_month(p) for p in picks],
+                textposition="top center", textfont=dict(size=10, color="#A3ADBF"), marker=dict(size=10, color=["#34D399" if x >= 0 else "#F87171" for x in pts.values]),
+                customdata=[label_month(p) for p in picks], hovertemplate="%{customdata}<br>Nifty next " + str(h) + " months: <b>%{x:+.1f}%</b><extra></extra>"))
+            fig.add_vline(x=0, line_color="#4B5563")
+            fig.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=0), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", dragmode=False,
+                              xaxis=dict(title=f"Nifty change over the next {h} months", ticksuffix="%", fixedrange=True, gridcolor="#1F2A44"),
+                              yaxis=dict(title="How similar", tickformat=".0%", fixedrange=True, gridcolor="#1F2A44"),
+                              hoverlabel=dict(bgcolor="#111A2E", font=dict(color="#E5E7EB")))
+            st.plotly_chart(fig, width="stretch", config=CHART_CONFIG)
+
+            actual = outs.loc[m, f"nifty_{h}"]
+            if not np.isnan(actual):
+                st.info(f"What actually happened after {label_month(m)}: Nifty {actual:+.1f}% over the next {h} months.")
+
+            table = pd.DataFrame({
+                "Month": [label_month(p) for p in picks],
+                "Similarity": [f"{max(0, 1 - 2 * d):.0%}" for d in dist[picks]],
+                f"Nifty next {h}m": [fmt_move(outs.loc[p, f"nifty_{h}"], "%") for p in picks],
+                f"Rupee next {h}m": [fmt_move(outs.loc[p, f"inr_{h}"], "%") for p in picks],
+                f"FII next {h}m": [fmt_move(outs.loc[p, f"fii_{h}"], "₹ cr") for p in picks]})
+            with st.expander("The 15 similar months"):
+                st.dataframe(table, hide_index=True, width="stretch")
+
+            rec = sim_analog_record(stamp, h)
+            if rec:
+                with st.container(border=True):
+                    st.markdown("<p class='cap'>Track record</p>", unsafe_allow_html=True)
+                    st.write(f"Tested on {rec['n']} months since {label_month(rec['since'])}, each time using only the past as it was known then: "
+                             f"the real {h}-month Nifty move landed inside the similar months' middle-80% range **{rec['inside']:.0%}** of the time (ideal: 80%). "
+                             f"Calling up or down from the median was right **{rec['direction']:.0%}** of the time, against **{rec['always_up']:.0%}** for simply "
+                             f"always guessing 'up'.")
+                    st.caption("So use this for the size of the range (what a bad and a good outcome looked like in similar setups), not for direction.")
+
+    # ----- 3. what if
+    with t3:
+        models, moves_hist = sim_models(stamp)
+        any_m = next(iter(models.values()))
+        st.markdown("Set how much the US and global drivers move over the next **3 months**. The estimates come from how India's numbers "
+                    f"moved over the same 3-month windows in {any_m['n']} overlapping windows since {label_month(any_m['since'])}. "
+                    "Leave a slider at 0 for 'no change'.")
+        last = moves_hist.dropna(how="all").iloc[-1]
+        if st.button("Fill in the last 3 months' actual moves"):
+            for k, (_, _, _, lo, hi, step) in sim.DRIVERS.items():
+                v = last.get(k, np.nan)
+                ss[f"wi_{k}"] = 0.0 if np.isnan(v) else round(float(np.clip(round(v / step) * step, lo, hi)), 2)
+            st.rerun()
+        cols = st.columns(len(sim.DRIVERS))
+        moves = {}
+        for col, (k, (lbl, _, unit, lo, hi, step)) in zip(cols, sim.DRIVERS.items()):
+            with col:
+                ss.setdefault(f"wi_{k}", 0.0)
+                moves[k] = st.slider(f"{lbl} ({unit})", float(lo), float(hi), step=float(step), key=f"wi_{k}")
+                st.caption(f"Last 3 months: {fmt_move(last.get(k, np.nan), unit)}")
+        res = sim.what_if(models, moves)
+
+        html = ["<table style='width:100%;border-collapse:collapse;font-size:14px'>",
+                "<tr style='text-align:left;color:#A3ADBF'><th style='padding:6px'>India</th><th>Expected 3-month move</th><th>Likely range (68%)</th>"
+                "<th>Biggest pushes</th><th>How much history explains</th></tr>"]
+        for t, (lbl, _, unit, note) in sim.TARGETS.items():
+            r, mdl = res[t], models[t]
+            parts = sorted(r["parts"].items(), key=lambda kv: -abs(kv[1]))
+            pushes = ", ".join(f"{sim.DRIVERS[k][0].split(' (')[0]} {fmt_move(v, unit)}" for k, v in parts if abs(v) >= {"%": 0.05, "pts": 0.005, "₹ cr": 50}[unit]) or "—"
+            html.append(f"<tr style='border-top:1px solid #1F2A44'><td style='padding:6px'>{lbl}<div class='muted' style='font-size:12px'>{note}</div></td>"
+                        f"<td><b>{fmt_move(r['mid'], unit)}</b></td><td>{fmt_move(r['lo'], unit)} to {fmt_move(r['hi'], unit)}</td>"
+                        f"<td class='muted'>{pushes}</td><td>{mdl['r2']:.0%}</td></tr>")
+        html.append("</table>")
+        with st.container(border=True):
+            st.markdown("".join(html), unsafe_allow_html=True)
+
+        with st.expander("Rules of thumb behind this (per unit move, holding the other drivers fixed)"):
+            rows = []
+            for t, (lbl, _, unit, _) in sim.TARGETS.items():
+                mdl = models[t]
+                row = {"India": lbl, "With no driver moves": fmt_move(mdl["const"], unit)}
+                for k, (dl, _, du, *_r) in sim.DRIVERS.items():
+                    one = 1.0 if du == "pts" else 10.0
+                    row[f"{dl.split(' (')[0]} {'+1 pt' if du == 'pts' else '+10%'}"] = fmt_move(mdl["beta"][k] * one, unit)
+                rows.append(row)
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+            st.caption("'With no driver moves' is the typical drift of a 3-month window (Nifty has tended to rise, the rupee to weaken slowly).")
+        st.caption("'How much history explains' is the share of past 3-month moves these drivers account for (R²). Nifty's is around 40%; "
+                   "FII flows and India CPI are mostly driven by other things, so their ranges are wide. These are relationships that held on average, "
+                   "not cause and effect, and they shift over time (for example, DIIs now absorb much more FII selling than before 2020). "
+                   "Oil shows little effect on these within 3 months; its pull on India builds more slowly through inflation and the current account. "
+                   "The Fed rate is not a separate slider: it reaches India mainly through the US 10Y and the dollar, so set those.")
 
 st.caption(f"Sources: FRED, Yahoo Finance, RBI, MoSPI, NSE and MSEI (FII/DII). Missing indicators: {', '.join(meta.get('missing_indicators', [])) or 'none'}. "
            "Tailwind/headwind labels come from simple rules in config.py, not from a forecast.")

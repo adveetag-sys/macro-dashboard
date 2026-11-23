@@ -92,6 +92,13 @@ If a manual column is empty, India CPI, India 10Y, India GDP and forex reserves 
 
 Committing these files also keeps the scheduled job alive: GitHub pauses schedules in repos with no activity for 60 days.
 
+## The Simulator tab
+Three history-based tools (the maths is in `simulator.py`). Each shows its own track record on the page.
+- **Nifty range from India VIX:** the 68% and 95% range the options market is pricing for any number of days ahead. Since 2008, Nifty stayed inside the 1-sigma range about 75% of the time (theory 68%).
+- **What happened next:** the 15 past months most like the selected month, and what Nifty, the rupee and FII flows did over the next 3, 6 and 12 months. Good for the size of the range; no better than "Nifty usually rises" for direction.
+- **What if:** sliders for US 10Y, dollar, oil and S&P 500 moves over 3 months, giving the typical knock-on for Nifty, rupee, FII flows, India 10Y and India CPI, with a 68% range and how much history explains (R²).
+None of it is a prediction or trading advice, and shocks like March 2020 fall outside all three.
+
 ## Changing the tailwind / headwind rules
 All rules are in `config.py`, next to each indicator. Examples:
 - `{"type": "change", "months": 3, "polarity": -1}`: a big rise over 3 months is a headwind (US 10Y, DXY, Brent). "Big" means more than half its usual 3-month move over the last 5 years.
