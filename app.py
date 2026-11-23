@@ -31,8 +31,9 @@ st.markdown("""<style>
 
 
 # ---------- data ----------
-@st.cache_data(ttl=3600)
-def load():
+@st.cache_data(ttl=600)
+def load(stamp):
+    """stamp = file times, so new data is picked up as soon as it lands."""
     vals = pd.read_csv("data/monthly.csv", index_col="month")
     sigs = pd.read_csv("data/signals.csv", index_col="month", dtype=str).fillna("")
     asof = pd.read_csv("data/asof.csv", index_col="month", dtype=str).fillna("") if Path("data/asof.csv").exists() else sigs.copy().replace(r".*", "", regex=True)
@@ -46,7 +47,8 @@ if not Path("data/monthly.csv").exists():
     st.error("No data yet. Run `python fetch.py` and then `python build.py` (see README).")
     st.stop()
 
-vals, sigs, asof, meta, events = load()
+stamp = tuple(Path(f).stat().st_mtime for f in ["data/monthly.csv", "data/signals.csv", "data/meta.json", "data/manual/events.csv"] if Path(f).exists())
+vals, sigs, asof, meta, events = load(stamp)
 months = list(vals.index)
 
 
@@ -236,7 +238,7 @@ if ss.view == "Dashboard":
         with col.container(border=True):
             st.markdown(f"<div class='stagehead' style='border-color:{STAGE_COLOR[stage]}'><b>{num} · {title}</b><br><span class='muted'>{note}</span></div>",
                         unsafe_allow_html=True)
-            rows = [i for i in INDICATORS if i["stage"] == stage]
+            rows = [i for i in INDICATORS if i["stage"] == stage and vals[i["k"]].notna().any()]  # hide rows with no data at all
 
             def draw(i):
                 k = i["k"]
@@ -246,13 +248,8 @@ if ss.view == "Dashboard":
                            + (f" <span class='muted' style='font-size:12px'>{note}</span>" if note else ""), unsafe_allow_html=True)
                 b.button("›", key=f"row-{k}", on_click=open_page, args=(k,), help=f"Open {i['label']}")
 
-            for i in [r for r in rows if r["top"]]:
+            for i in rows:
                 draw(i)
-            rest = [r for r in rows if not r["top"]]
-            if rest:
-                with st.expander(f"Show {len(rest)} more"):
-                    for i in rest:
-                        draw(i)
 
     # ---------- trends + coming up ----------
     left, right = st.columns([2, 1])

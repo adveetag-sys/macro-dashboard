@@ -30,7 +30,7 @@ RAW = {
     "gdp_us":   {"source": "fred", "id": "A191RL1Q225SBEA", "agg": "last"},  # real GDP, % q/q annualised
     "dff":      {"source": "fred", "id": "DFF",             "agg": "last"},  # effective fed funds rate
     "walcl":    {"source": "fred", "id": "WALCL",           "agg": "last"},  # Fed total assets, $ millions (from 2002)
-    "wresbal":  {"source": "fred", "id": "WRESBAL",         "agg": "last"},  # reserve balances, $ billions
+    "wresbal":  {"source": "fred", "id": "WRESBAL",         "agg": "last"},  # reserve balances, $ millions
     "brent":    {"source": "fred", "id": "DCOILBRENTEU",    "agg": "last"},
     "us10":     {"source": "fred", "id": "DGS10",           "agg": "last"},
     "us2":      {"source": "fred", "id": "DGS2",            "agg": "last"},
@@ -97,7 +97,7 @@ INDICATORS = [
     dict(k="dxy", label="DXY", stage="T", topic="dollar", top=True, sub="Dollar vs 6 currencies",
          calc="r.dxy", fmt="{:.1f}", rule={"type": "change", "months": 3, "polarity": -1, "pct": True}),
     dict(k="usRes", label="US bank reserves", stage="T", topic="dollar", top=False, sub="Dollar liquidity",
-         calc="r.wresbal / 1e3", fmt="${:.2f}T", rule={"type": "change", "months": 3, "polarity": +1, "pct": True}),
+         calc="r.wresbal / 1e6", fmt="${:.2f}T", rule={"type": "change", "months": 3, "polarity": +1, "pct": True}),
     dict(k="fii", label="FII flows", stage="T", topic="fii", top=True, sub="Net, that month",
          calc="r.fii", fmt="₹{:+,.0f} cr", rule={"type": "sign", "polarity": +1, "dead": 5000}),
     # 3 Reacts
