@@ -124,16 +124,26 @@ def analog_track_record(ranks, outs, h=6, start="2006-01", k=15):
 
 
 # ---------------------------------------------------------------- 3. what if
+# Two steps, following the dashboard's flow chart:
+#   step 1  US leaders (jobs, inflation, growth, Fed) -> US markets (US 10Y, dollar, S&P 500)
+#   step 2  US markets + oil -> India (Nifty, rupee, FII, India 10Y, India CPI)
+# Linking leaders straight to India gives backwards answers ("Fed hikes -> Nifty up", because the Fed hikes
+# in booms); going through the markets keeps each link sensible. The S&P 500 stands in for global risk mood.
 
-# The Fed rate is not a separate driver: it reaches India through the US 10Y and the dollar, and as a
-# separate input it double-counts the 10Y (and picks up "the Fed hikes in booms", which flips signs).
-# The S&P 500 stands in for global risk mood, so the other drivers are measured net of the global cycle.
-DRIVERS = {  # key: (label, how the 3-month move is measured, unit, slider min, max, step)
-    "us10":  ("US 10Y yield", "diff", "pts", -1.5, 1.5, 0.05),
-    "dxy":   ("Dollar index (DXY)", "pct", "%", -10.0, 10.0, 0.5),
-    "brent": ("Brent oil", "pct", "%", -50.0, 50.0, 1.0),
-    "sp":    ("S&P 500 (global mood)", "pct", "%", -30.0, 30.0, 1.0),
+LEADERS = {  # key: (label, unit, slider min, max, step, help)
+    "jobs":  ("US hiring pace", "k jobs/month", -400.0, 400.0, 25.0, "change in average monthly job gains vs the last 3 months"),
+    "cpi":   ("US CPI inflation", "pts", -2.0, 2.0, 0.1, "change in the yearly inflation rate"),
+    "gdp":   ("US GDP growth", "pts", -6.0, 6.0, 0.5, "change in quarterly annualised growth"),
+    "fed":   ("Fed funds rate", "pts", -1.5, 1.5, 0.25, "+0.25 = one hike"),
+    "fedBs": ("Fed balance sheet", "%", -10.0, 10.0, 0.5, "+ = money printing (QE), − = tightening (QT)"),
+    "brent": ("Brent oil", "%", -50.0, 50.0, 1.0, "price change"),
 }
+MARKETS = {  # key: (label, how measured, unit, slider min, max, step)
+    "us10": ("US 10Y yield", "diff", "pts", -1.5, 1.5, 0.05),
+    "dxy":  ("Dollar index (DXY)", "pct", "%", -10.0, 10.0, 0.5),
+    "sp":   ("S&P 500 (global mood)", "pct", "%", -30.0, 30.0, 1.0),
+}
+DRIVERS = {**MARKETS, "brent": ("Brent oil", "pct", "%", -50.0, 50.0, 1.0)}  # step-2 inputs
 TARGETS = {  # key: (label, how measured, unit, note)
     "nifty": ("Nifty", "pct", "%", ""),
     "inr":   ("Rupee (USD/INR)", "pct", "%", "+ = rupee weaker"),
@@ -141,6 +151,7 @@ TARGETS = {  # key: (label, how measured, unit, note)
     "in10y": ("India 10Y yield", "diff", "pts", ""),
     "inCpi": ("India CPI inflation", "diff", "pts", ""),
 }
+CRASHES = (("2008-09", "2009-06"), ("2020-03", "2021-06"))  # left out of step 1: COVID swung jobs by millions
 
 
 def three_month_moves(vals, spec):
@@ -152,9 +163,44 @@ def three_month_moves(vals, spec):
     return pd.DataFrame(out)
 
 
+def leader_moves(vals):
+    return pd.DataFrame({
+        "jobs": vals["usJobs"].rolling(3).mean().diff(3),
+        "cpi": vals["usCpi"].diff(3),
+        "gdp": vals["gdp"].diff(3),
+        "fed": vals["fed"].diff(3),
+        "fedBs": vals["fedBs"].pct_change(3, fill_method=None) * 100,
+        "brent": vals["brent"].pct_change(3, fill_method=None) * 100,
+    })
+
+
+def _ridge(X, y, lam=0.05):
+    """Least squares with a little shrinkage, so two inputs that move together (jobs and GDP) share an effect
+    instead of fighting over it. Inputs are scaled first so the shrinkage treats them alike."""
+    mu, sd = X.mean(), X.std()
+    A = ((X - mu) / sd).values
+    yc = y - y.mean()
+    b = np.linalg.solve(A.T @ A + lam * len(A) * np.eye(A.shape[1]), A.T @ yc.values)
+    resid = yc.values - A @ b
+    return dict(zip(X.columns, b / sd.values)), 1 - resid.var() / yc.var(), resid.std(ddof=A.shape[1] + 1)
+
+
+def fit_leaders(vals, start="2003-01"):
+    """Step 1: how each US market's 3-month move has followed the leaders' moves in normal times."""
+    L = leader_moves(vals)
+    M = three_month_moves(vals, MARKETS)
+    models = {}
+    for t in MARKETS:
+        d = pd.concat([L, M[t].rename("y")], axis=1).loc[start:].dropna()
+        d = d[[not any(a <= i <= b for a, b in CRASHES) for i in d.index]]
+        beta, r2, sd = _ridge(d[list(LEADERS)], d["y"])
+        models[t] = {"beta": beta, "r2": r2, "resid_sd": sd, "n": len(d)}
+    return models, L
+
+
 def fit_what_if(vals, start="2005-01"):
-    """For each India target, a least-squares fit of its 3-month move on the four drivers' 3-month moves
-    over the same window, using every month since `start`. Returns betas, R² and the typical miss."""
+    """Step 2: for each India target, a least-squares fit of its 3-month move on the US markets' and oil's
+    3-month moves over the same window, every month since `start`. Returns betas, R² and the typical miss."""
     X = three_month_moves(vals, DRIVERS)
     Y = three_month_moves(vals, TARGETS)
     models = {}
@@ -169,11 +215,30 @@ def fit_what_if(vals, start="2005-01"):
     return models, X
 
 
-def what_if(models, moves):
-    """Expected 3-month move of each target for the given driver moves, with a 68% range and each driver's part."""
+def implied_markets(lead_models, leaders):
+    """US market moves the leaders' moves imply (step 1)."""
+    return {m: sum(mdl["beta"][k] * leaders.get(k, 0.0) for k in LEADERS) for m, mdl in lead_models.items()}
+
+
+def what_if(models, lead_models, leaders, extra):
+    """Expected 3-month move of each India target. leaders = leader slider moves; extra = market moves on top
+    of what the leaders imply. Returns the market moves used, and for each target the middle, a 68% range and
+    how much each slider contributed."""
+    implied = implied_markets(lead_models, leaders)
+    markets = {m: implied[m] + extra.get(m, 0.0) for m in MARKETS}
+    use_lead = any(abs(leaders.get(k, 0.0)) > 0 for k in LEADERS if k != "brent")
     out = {}
     for t, m in models.items():
-        parts = {k: m["beta"][k] * moves.get(k, 0.0) for k in DRIVERS}
+        parts = {}
+        for k in LEADERS:  # leader -> each market -> India, plus oil's own direct effect
+            via = sum(m["beta"][mk] * lead_models[mk]["beta"][k] for mk in MARKETS) * leaders.get(k, 0.0)
+            parts[k] = via + (m["beta"]["brent"] * leaders.get(k, 0.0) if k == "brent" else 0.0)
+        for mk in MARKETS:
+            parts["x_" + mk] = m["beta"][mk] * extra.get(mk, 0.0)
         mid = m["const"] + sum(parts.values())
-        out[t] = {"mid": mid, "lo": mid - m["resid_sd"], "hi": mid + m["resid_sd"], "parts": parts, "base": m["const"]}
-    return out
+        var = m["resid_sd"] ** 2
+        if use_lead:  # step 1 is uncertain too
+            var += sum((m["beta"][mk] * lead_models[mk]["resid_sd"]) ** 2 for mk in MARKETS)
+        sd = np.sqrt(var)
+        out[t] = {"mid": mid, "lo": mid - sd, "hi": mid + sd, "parts": parts, "base": m["const"]}
+    return {"implied": implied, "markets": markets, "india": out}

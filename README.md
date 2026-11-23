@@ -96,7 +96,7 @@ Committing these files also keeps the scheduled job alive: GitHub pauses schedul
 Three history-based tools (the maths is in `simulator.py`). Each shows its own track record on the page.
 - **Nifty range from India VIX:** the 68% and 95% range the options market is pricing for any number of days ahead. Since 2008, Nifty stayed inside the 1-sigma range about 75% of the time (theory 68%).
 - **What happened next:** the 15 past months most like the selected month, and what Nifty, the rupee and FII flows did over the next 3, 6 and 12 months. Good for the size of the range; no better than "Nifty usually rises" for direction.
-- **What if:** sliders for US 10Y, dollar, oil and S&P 500 moves over 3 months, giving the typical knock-on for Nifty, rupee, FII flows, India 10Y and India CPI, with a 68% range and how much history explains (R²).
+- **What if:** two steps, like the flow chart. Sliders for the US leaders (hiring pace, US CPI, US GDP growth, Fed rate, Fed balance sheet, oil) move the US markets (US 10Y, dollar, S&P 500), and those plus oil move India (Nifty, rupee, FII flows, India 10Y, India CPI). You can add extra market moves on top. Each result has a 68% range and how much history explains (R²). PMI is left out until there is more history.
 None of it is a prediction or trading advice, and shocks like March 2020 fall outside all three.
 
 ## Changing the tailwind / headwind rules
