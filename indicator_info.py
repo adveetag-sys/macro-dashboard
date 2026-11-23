@@ -80,18 +80,9 @@ INFO = {
              "rupee weakens → Indian bond yields rise too → banks and rate-sensitive stocks fall.",
         watch="Fast rises like 2013 and 2022. Also watch for big moves on Fed or CPI days.",
     ),
-    "in10y": dict(
-        what="The yield (interest rate) on India's 10-year government bonds. It is India's main long-term interest rate and the base for corporate bonds and home-loan pricing.",
-        source="OECD series on FRED from Dec 2011, filled for earlier years with the IMF government bond yield series on FRED (which stops in 2017).",
-        read="It was above 10% in the late 1990s, about 7–8% for much of 2008–2019, near 6% in 2020 and about 6.5–7.5% since. "
-             "It usually sits above the repo rate. A jump of 0.5 points in a few months is big.",
-        path="Higher India 10Y → higher borrowing costs for the government, companies and homebuyers → lower stock valuations, especially banks and real estate. "
-             "It rises when inflation rises, when the RBI is expected to hike, when the government borrows more, or when foreigners sell bonds.",
-        watch="Moves versus the US 10Y (the gap), and moves around RBI policy days and the Union Budget.",
-    ),
     "gap": dict(
         what="Indian 10-year government bond yield minus the US 10-year yield. It shows how much extra return a foreign investor gets for holding Indian bonds.",
-        source="Calculated here: India 10Y (OECD and IMF series on FRED) minus US 10Y (FRED).",
+        source="Calculated here from the OECD India long-term rate and the US 10Y (FRED).",
         read="Historically about 4–7 points. Below about 3 points makes India less attractive for foreign bond money, especially once you count the risk of the rupee falling.",
         path="Wider gap → foreign bond money comes in → rupee supported → lower borrowing costs. Narrow gap → foreign money leaves → rupee weakens.",
         watch="The gap shrinking quickly because US yields are rising, as in 2013 and 2022.",
@@ -113,8 +104,7 @@ INFO = {
     ),
     "fii": dict(
         what="Net buying or selling of Indian shares by foreign institutional investors (also called FPIs) in the cash market during the month.",
-        source="From 2014: NSE provisional daily data summed by month (via tapetide.com). 2000–2013: SEBI's monthly net FII equity investment (via equitymaster.com), "
-               "which is measured slightly differently. Filled in data/manual/flows.csv.",
+        source="NSE provisional daily data, summed by month (via tapetide.com). Filled in data/manual/flows.csv. Available from Jan 2014.",
         read="Positive = foreigners are buying, negative = selling. ₹±10,000 crore in a month is a normal swing. Selling above ₹40,000 crore in a month is heavy. "
              "October 2024 and March 2026 saw selling of more than ₹1 lakh crore.",
         path="FII selling → they convert rupees to dollars → rupee weakens → index heavyweights (banks, large caps) fall. "
@@ -141,9 +131,7 @@ INFO = {
     ),
     "inCpi": dict(
         what="How much prices of everyday goods and services in India rose compared with a year ago (headline CPI, combined rural and urban).",
-        source="Ministry of Statistics (MoSPI), around the 12th of the next month, filled in data/manual/rbi.csv from Jan 2014 (base year 2024 from January 2026). "
-               "Before 2014 it uses the OECD series on FRED, which follows CPI for Industrial Workers (CPI-IW), India's main inflation measure at the time "
-               "(for example 10.75% in Aug 2013, as officially published).",
+        source="Ministry of Statistics (MoSPI), around the 12th of the next month. The base year changed to 2024 from January 2026. Filled in data/manual/rbi.csv.",
         read="The RBI's target is 4%, with a band of 2–6%. Above 6% breaks the upper limit and puts pressure on the RBI to hike. Food (vegetables, pulses) makes it swing a lot.",
         path="High CPI → RBI keeps rates high or hikes → borrowing costs rise → slower growth and lower stock valuations. "
              "Oil and a weak rupee both push CPI up.",
@@ -160,39 +148,15 @@ INFO = {
     ),
     "inLiq": dict(
         what="Whether Indian banks have spare cash (surplus) or are short of cash (deficit) in the system, based on the RBI's liquidity operations.",
-        source="Monthly average of the RBI's daily net LAF position, from the Governor's policy statements and the RBI Bulletin's 'State of the Economy'. "
-               "Filled by hand in data/manual/rbi.csv (liquidity_lakh_cr): from Aug 2025, plus RBI-stated averages for Jul and Sep 2013, Feb 2020 and May 2022.",
-        read="Surplus = easy money; overnight rates sit near the bottom of the RBI's corridor. Deficit = tight money; overnight rates rise above the repo rate. "
-             "A deficit larger than ₹1 lakh crore is significant. It hit record surpluses of about ₹9.7 lakh crore in early September 2026.",
+        source="RBI daily liquidity data. Not filled yet; would go in data/manual/rbi.csv.",
+        read="Surplus = easy money and lower short-term rates. Deficit = tight money. A deficit larger than ₹1 lakh crore is significant.",
         path="RBI selling dollars or tax outflows → less rupee cash → deficit → short-term rates rise → Bank Nifty under pressure.",
         watch="A swing from surplus into deficit.",
-    ),
-    "inGdp": dict(
-        what="How fast India's economy grew in the quarter compared with the same quarter a year earlier (real GDP, adjusted for inflation).",
-        source="Official figure from MoSPI about two months after each quarter ends, filled by hand in data/manual/rbi.csv (gdp_in_yoy). "
-               "Months without an official figure use OECD data from FRED (since 2004, built from quarter-on-quarter growth) and an older OECD year-on-year series. "
-               "The base year moved to 2022-23 in 2026, so older numbers are not perfectly comparable.",
-        read="About 6–7% is normal for India. Above 7.5% is strong. Below 5.5% is a slowdown. It turned deeply negative in Apr–Jun 2020 (COVID lockdown).",
-        path="Strong growth → better company earnings → supports Nifty and attracts long-term foreign money (FDI and FIIs). "
-             "Weak growth → RBI more likely to cut, but earnings and stocks suffer.",
-        watch="Growth slowing while inflation rises (stagflation risk), and gaps between GDP and on-the-ground data like PMI, GST and credit growth.",
-    ),
-    "inDur": dict(
-        what="Net durable liquidity: the longer-lasting cash in India's banking system, after counting the government's balances with the RBI and the RBI's longer-term operations. "
-             "The daily 'bank liquidity' figure shows what banks park with or borrow from the RBI each day; durable liquidity shows the slower, structural position underneath.",
-        source="RBI's daily 'Money Market Operations' press release (the 'Net durable liquidity as on <date>' line, updated about every two weeks). "
-               "Filled by hand in data/manual/rbi.csv (durable_lakh_cr), using the last reading of each month. Sparse before 2025.",
-        read="A surplus of ₹2–4 lakh crore is comfortable. Above ₹7 lakh crore is very flush (₹10.1 lakh crore at end-Sep 2026). "
-             "A durable deficit means the RBI needs to add money for months, usually by buying bonds (OMOs) or doing forex swaps.",
-        path="Big durable surplus → banks have plenty of money to lend → short-term rates stay low → supports credit growth and Bank Nifty. "
-             "It shrinks when the RBI sells dollars to defend the rupee, when the government builds up cash, or when currency demand rises.",
-        watch="Whether it is rising or falling over several readings, and big moves after RBI forex intervention.",
     ),
     "cad": dict(
         what="India's current account balance: everything India earns from abroad (exports, services, remittances) minus everything it pays abroad (imports, interest, dividends). "
              "A negative number is a deficit.",
-        source="RBI quarterly balance of payments release, about 2–3 months after each quarter, filled in data/manual/rbi.csv. "
-               "Quarters without a figure use the IMF's annual (April–March) number from FRED, so older history moves in yearly steps.",
+        source="RBI quarterly balance of payments release, about 2–3 months after each quarter. Filled in data/manual/rbi.csv.",
         read="Around −1% to −2% of GDP is manageable. Below −2.5% is a warning. It was close to −5% in 2012–13, which is why the 2013 taper tantrum hit India so hard. "
              "A positive number is a surplus.",
         path="Bigger deficit → India needs more foreign money every month → more exposed to FII outflows → rupee weakens faster in a shock.",
@@ -200,8 +164,7 @@ INFO = {
     ),
     "nifty": dict(
         what="The NSE's index of 50 large Indian companies. It is the main measure of the Indian stock market.",
-        source="NSE, daily (Yahoo symbol ^NSEI), which starts in Sep 2007. Earlier months use the BSE Sensex (^BSESN) scaled to the Nifty's level, "
-               "so the moves are right but the exact levels before 2007 are approximate.",
+        source="NSE, daily (Yahoo symbol ^NSEI).",
         read="Long-run growth is about 10–12% a year. A fall of 10% from the top is a correction, and 20% is a bear market. "
              "Its biggest falls were in 2008 (more than 50%) and 2020 (almost 40%).",
         path="It is at the end of the chain. It reacts to FII flows, the rupee, RBI rates, oil and global risk mood, and is cushioned by domestic SIP and mutual fund buying.",

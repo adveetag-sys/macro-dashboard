@@ -45,7 +45,7 @@ def load_raw_monthly() -> pd.DataFrame:
         monthly.index = monthly.index.to_period("M")
         out[name] = monthly.reindex(months)
     # quarterly / slow series: carry the last known value forward a few months
-    for col in ["gdp_us", "cad_in", "repo", "pmi_us", "pmi_in", "liq", "dliq"]:
+    for col in ["gdp_us", "cad_in", "repo", "pmi_us", "pmi_in", "liq"]:
         out[col] = out[col].ffill(limit=3)
     return out
 

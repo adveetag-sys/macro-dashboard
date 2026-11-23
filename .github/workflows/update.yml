@@ -19,10 +19,8 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
-      - run: python -u fetch.py
+      - run: python fetch.py
         timeout-minutes: 12
-        env:
-          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}   # add this once under Settings -> Secrets and variables -> Actions
         continue-on-error: true  # if fetching stalls, still build from the data we already have
       - run: python build.py
       - name: Commit new data
