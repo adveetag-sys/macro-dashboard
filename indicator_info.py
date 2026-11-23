@@ -80,9 +80,18 @@ INFO = {
              "rupee weakens → Indian bond yields rise too → banks and rate-sensitive stocks fall.",
         watch="Fast rises like 2013 and 2022. Also watch for big moves on Fed or CPI days.",
     ),
+    "in10y": dict(
+        what="The yield (interest rate) on India's 10-year government bonds. It is India's main long-term interest rate and the base for corporate bonds and home-loan pricing.",
+        source="OECD series on FRED from Dec 2011, filled for earlier years with the IMF government bond yield series on FRED (which stops in 2017).",
+        read="It was above 10% in the late 1990s, about 7–8% for much of 2008–2019, near 6% in 2020 and about 6.5–7.5% since. "
+             "It usually sits above the repo rate. A jump of 0.5 points in a few months is big.",
+        path="Higher India 10Y → higher borrowing costs for the government, companies and homebuyers → lower stock valuations, especially banks and real estate. "
+             "It rises when inflation rises, when the RBI is expected to hike, when the government borrows more, or when foreigners sell bonds.",
+        watch="Moves versus the US 10Y (the gap), and moves around RBI policy days and the Union Budget.",
+    ),
     "gap": dict(
         what="Indian 10-year government bond yield minus the US 10-year yield. It shows how much extra return a foreign investor gets for holding Indian bonds.",
-        source="Calculated here from the OECD India long-term rate and the US 10Y (FRED).",
+        source="Calculated here: India 10Y (OECD and IMF series on FRED) minus US 10Y (FRED).",
         read="Historically about 4–7 points. Below about 3 points makes India less attractive for foreign bond money, especially once you count the risk of the rupee falling.",
         path="Wider gap → foreign bond money comes in → rupee supported → lower borrowing costs. Narrow gap → foreign money leaves → rupee weakens.",
         watch="The gap shrinking quickly because US yields are rising, as in 2013 and 2022.",
@@ -152,6 +161,16 @@ INFO = {
         read="Surplus = easy money and lower short-term rates. Deficit = tight money. A deficit larger than ₹1 lakh crore is significant.",
         path="RBI selling dollars or tax outflows → less rupee cash → deficit → short-term rates rise → Bank Nifty under pressure.",
         watch="A swing from surplus into deficit.",
+    ),
+    "inGdp": dict(
+        what="How fast India's economy grew in the quarter compared with the same quarter a year earlier (real GDP, adjusted for inflation).",
+        source="Official figure from MoSPI about two months after each quarter ends, filled by hand in data/manual/rbi.csv (gdp_in_yoy). "
+               "Months without an official figure use OECD data from FRED (since 2004, built from quarter-on-quarter growth) and an older OECD year-on-year series. "
+               "The base year moved to 2022-23 in 2026, so older numbers are not perfectly comparable.",
+        read="About 6–7% is normal for India. Above 7.5% is strong. Below 5.5% is a slowdown. It turned deeply negative in Apr–Jun 2020 (COVID lockdown).",
+        path="Strong growth → better company earnings → supports Nifty and attracts long-term foreign money (FDI and FIIs). "
+             "Weak growth → RBI more likely to cut, but earnings and stocks suffer.",
+        watch="Growth slowing while inflation rises (stagflation risk), and gaps between GDP and on-the-ground data like PMI, GST and credit growth.",
     ),
     "cad": dict(
         what="India's current account balance: everything India earns from abroad (exports, services, remittances) minus everything it pays abroad (imports, interest, dividends). "

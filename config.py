@@ -37,7 +37,10 @@ RAW = {
     "vix":      {"source": "fred", "id": "VIXCLS",          "agg": "last"},
     "usdinr":   {"source": "fred", "id": "DEXINUS",         "agg": "last"},  # rupees per dollar, from 1973
     # India series published on FRED by the OECD / IMF (used if no RBI file is supplied)
-    "in10":     {"source": "fred", "id": "INDIRLTLT01STM",  "agg": "last"},  # India long-term govt bond yield
+    "in10":     {"source": "fred", "id": "INDIRLTLT01STM",  "agg": "last"},  # India 10Y govt bond yield (OECD, from Dec 2011)
+    "in10_old": {"source": "fred", "id": "INTGSBINM193N",   "agg": "last"},  # India govt bond yield (IMF, to May 2017), fills older years
+    "gdp_in_qq": {"source": "fred", "id": "NAEXKP01INQ657S", "agg": "last"},  # India real GDP, % q/q (OECD, from 2004)
+    "gdp_in_yy": {"source": "fred", "id": "INDGDPRQPSMEI",   "agg": "last"},  # India real GDP, % y/y (OECD, older years)
     "cpi_in":   {"source": "fred", "id": "INDCPIALLMINMEI", "agg": "last"},  # India CPI index
     "fx_in":    {"source": "fred", "id": "TRESEGINM052N",   "agg": "last"},  # India reserves excl. gold, $ millions
 
@@ -57,6 +60,7 @@ RAW = {
     "cad_in":   {"source": "manual", "file": "rbi.csv",   "col": "cad_pct_gdp"},
     "fx_rbi":   {"source": "manual", "file": "rbi.csv",   "col": "fx_reserves_bn"},
     "cpi_rbi":  {"source": "manual", "file": "rbi.csv",   "col": "cpi_yoy"},
+    "gdp_off":  {"source": "manual", "file": "rbi.csv",   "col": "gdp_in_yoy"},  # official MoSPI real GDP % y/y
     "fii":      {"source": "manual", "file": "flows.csv", "col": "fii_cr"},
     "dii":      {"source": "manual", "file": "flows.csv", "col": "dii_cr"},
     "pmi_us":   {"source": "manual", "file": "pmi.csv",   "col": "us_pmi"},
@@ -81,7 +85,7 @@ INDICATORS = [
          calc="r.cpi_us.pct_change(12) * 100", fmt="{:.1f}%", rule={"type": "level", "good_below": 2.5, "bad_above": 3.5}),
     dict(k="pmi", label="US manufacturing PMI", stage="L", topic="usdata", top=False, sub="Above 50 = growing",
          calc="r.pmi_us", fmt="{:.1f}", rule={"type": "neutral"}),
-    dict(k="gdp", label="US GDP growth", stage="L", topic="usdata", top=False, sub="Quarterly, annualised",
+    dict(k="gdp", label="US GDP growth", stage="L", topic="usdata", top=False, sub="Quarterly, annualised (q/q)",
          calc="r.gdp_us", fmt="{:.1f}%", rule={"type": "neutral"}),
     dict(k="fed", label="Fed funds rate", stage="L", topic="fed", top=True, sub="Effective rate",
          calc="r.dff", fmt="{:.2f}%", rule={"type": "change", "months": 6, "polarity": -1}),
@@ -92,8 +96,10 @@ INDICATORS = [
     # 2 Carries the change
     dict(k="us10", label="US 10Y yield", stage="T", topic="yields", top=True, sub="Prices the Fed",
          calc="r.us10", fmt="{:.2f}%", rule={"type": "change", "months": 3, "polarity": -1}),
+    dict(k="in10y", label="India 10Y yield", stage="T", topic="yields", top=True, sub="Govt bond, 10-year",
+         calc="r.in10.combine_first(r.in10_old)", fmt="{:.2f}%", rule={"type": "change", "months": 3, "polarity": -1}),
     dict(k="gap", label="India–US 10Y gap", stage="T", topic="yields", top=True, sub="Wider pulls in FIIs",
-         calc="r.in10 - r.us10", fmt="{:.1f} pts", rule={"type": "change", "months": 3, "polarity": +1}),
+         calc="r.in10.combine_first(r.in10_old) - r.us10", fmt="{:.1f} pts", rule={"type": "change", "months": 3, "polarity": +1}),
     dict(k="dxy", label="DXY", stage="T", topic="dollar", top=True, sub="Dollar vs 6 currencies",
          calc="r.dxy", fmt="{:.1f}", rule={"type": "change", "months": 3, "polarity": -1, "pct": True}),
     dict(k="usRes", label="US bank reserves", stage="T", topic="dollar", top=False, sub="Dollar liquidity",
@@ -113,6 +119,10 @@ INDICATORS = [
          rule={"type": "change", "months": 3, "polarity": +1, "pct": True}),
     dict(k="inLiq", label="Bank liquidity", stage="R", topic="rbi", top=False, sub="₹ lakh crore, + = surplus",
          calc="r.liq", fmt="{:+.1f}", rule={"type": "sign", "polarity": +1, "dead": 0.5}),
+    dict(k="inGdp", label="India GDP growth", stage="R", topic="incpi", top=True, sub="Quarterly, year on year",
+         calc="r.gdp_off.ffill(limit=3).combine_first(((1 + r.gdp_in_qq.dropna() / 100).rolling(4).apply(np.prod, raw=True) * 100 - 100)"
+              ".reindex(r.index).ffill(limit=3)).combine_first(r.gdp_in_yy.ffill(limit=3))",
+         fmt="{:.1f}%", rule={"type": "level", "good_above": 7.0, "bad_below": 5.5}),
     dict(k="cad", label="India current account", stage="R", topic="incpi", top=False, sub="% of GDP",
          calc="r.cad_in", fmt="{:+.1f}%", rule={"type": "level", "good_above": -1.5, "bad_below": -2.5}),
     # 4 Moves last

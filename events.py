@@ -6,7 +6,7 @@ calm   = roughly when things had settled
 Numbers in the key tables are read from the data, not typed here, so they always match the charts.
 """
 
-KEY = ["fed", "fedBs", "us10", "dxy", "brent", "fii", "inr", "rbi", "inCpi", "nifty", "vix", "inVix"]
+KEY = ["gdp", "fed", "fedBs", "us10", "in10y", "gap", "dxy", "brent", "fii", "inr", "rbi", "inCpi", "inGdp", "cad", "nifty", "vix"]
 
 EVENTS = {
     "dotcom": dict(
