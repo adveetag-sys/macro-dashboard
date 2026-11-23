@@ -200,7 +200,8 @@ INFO = {
     ),
     "nifty": dict(
         what="The NSE's index of 50 large Indian companies. It is the main measure of the Indian stock market.",
-        source="NSE, daily (Yahoo symbol ^NSEI).",
+        source="NSE, daily (Yahoo symbol ^NSEI), which starts in Sep 2007. Earlier months use the BSE Sensex (^BSESN) scaled to the Nifty's level, "
+               "so the moves are right but the exact levels before 2007 are approximate.",
         read="Long-run growth is about 10–12% a year. A fall of 10% from the top is a correction, and 20% is a bear market. "
              "Its biggest falls were in 2008 (more than 50%) and 2020 (almost 40%).",
         path="It is at the end of the chain. It reacts to FII flows, the rupee, RBI rates, oil and global risk mood, and is cushioned by domestic SIP and mutual fund buying.",

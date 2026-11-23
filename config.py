@@ -47,6 +47,7 @@ RAW = {
 
     # Yahoo Finance (via yfinance; unofficial, may need fixing now and then)
     "nifty":    {"source": "yahoo", "id": "^NSEI",     "agg": "last"},
+    "sensex":   {"source": "yahoo", "id": "^BSESN",    "agg": "last"},  # used to extend Nifty before Sep 2007
     "bank":     {"source": "yahoo", "id": "^NSEBANK",  "agg": "last"},
     "sp":       {"source": "yahoo", "id": "^GSPC",     "agg": "last"},
     "ndx":      {"source": "yahoo", "id": "^NDX",      "agg": "last"},
@@ -131,7 +132,7 @@ INDICATORS = [
          calc="r.cad_in.combine_first(r.cad_imf.shift(3).ffill(limit=11).loc[:'2024-03'].reindex(r.index))", fmt="{:+.1f}%", rule={"type": "level", "good_above": -1.5, "bad_below": -2.5}),
     # 4 Moves last
     dict(k="nifty", label="Nifty 50", stage="F", topic="nifty", top=True, sub="India large-caps",
-         calc="r.nifty", fmt="{:,.0f}", rule={"type": "change", "months": 3, "polarity": +1, "pct": True}),
+         calc="r.nifty.combine_first(r.sensex * (r.nifty / r.sensex).dropna().iloc[:6].mean())", fmt="{:,.0f}", rule={"type": "change", "months": 3, "polarity": +1, "pct": True}),
     dict(k="bank", label="Bank Nifty", stage="F", topic="nifty", top=True, sub="Rates and liquidity",
          calc="r.bank", fmt="{:,.0f}", rule={"type": "change", "months": 3, "polarity": +1, "pct": True}),
     dict(k="sp", label="S&P 500", stage="F", topic="usstocks", top=True, sub="US large-caps",
