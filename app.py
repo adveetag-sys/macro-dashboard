@@ -79,16 +79,26 @@ def open_page(k):
     st.session_state.open = k
 
 
-def sparkline(series, color, height=70, marker=None):
+CHART_CONFIG = {"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "showTips": False}
+
+
+def sparkline(series, color, height=70, marker=None, k=None):
+    """Line chart: hover shows month + value. Zoom, pan and drag are switched off."""
     s = series.copy()
     s.index = pd.PeriodIndex(s.index, freq="M").to_timestamp()
-    fig = go.Figure(go.Scatter(x=s.index, y=s.values, mode="lines", line=dict(color=color, width=2), connectgaps=False))
+    labels = [fmt(k, v) if k else f"{v:,.2f}" for v in s.values]
+    fig = go.Figure(go.Scatter(
+        x=s.index, y=s.values, mode="lines", line=dict(color=color, width=2), connectgaps=False,
+        customdata=labels, hovertemplate="%{x|%b %Y}<br><b>%{customdata}</b><extra></extra>"))
     if marker is not None:
         fig.add_vline(x=pd.Period(marker, "M").to_timestamp(), line=dict(color="#FCD34D", width=1, dash="dot"))
     big = height > 80
+    axis = dict(gridcolor="#1F2A44", fixedrange=True, showspikes=True, spikemode="across", spikesnap="data",
+                spikethickness=1, spikedash="solid", spikecolor="#64748B")
     fig.update_layout(height=height, margin=dict(l=0, r=0, t=0, b=0), paper_bgcolor="rgba(0,0,0,0)",
-                      plot_bgcolor="rgba(0,0,0,0)", showlegend=False,
-                      xaxis=dict(visible=big, gridcolor="#1F2A44"), yaxis=dict(visible=big, gridcolor="#1F2A44"))
+                      plot_bgcolor="rgba(0,0,0,0)", showlegend=False, dragmode=False, hovermode="x",
+                      hoverlabel=dict(bgcolor="#111A2E", bordercolor=color, font=dict(color="#E5E7EB", size=13)),
+                      xaxis=dict(axis, visible=big), yaxis=dict(axis, visible=big, showspikes=False))
     return fig
 
 
@@ -137,7 +147,7 @@ def detail_page(k):
     left, right = st.columns([3, 2])
     with left.container(border=True):
         st.markdown("<p class='cap'>Full history since 1995 · dotted line = selected month</p>", unsafe_allow_html=True)
-        st.plotly_chart(sparkline(vals[k].dropna(), STAGE_COLOR[ind["stage"]], height=320, marker=m), width="stretch")
+        st.plotly_chart(sparkline(vals[k].dropna(), STAGE_COLOR[ind["stage"]], height=320, marker=m, k=k), width="stretch", config=CHART_CONFIG)
         counts = sigs[k].value_counts()
         st.caption(f"Since 1995: headwind in {counts.get('H', 0)} months, tailwind in {counts.get('T', 0)}, neutral in {counts.get('N', 0)}.")
     with right.container(border=True):
@@ -215,7 +225,7 @@ if ss.view == "Dashboard":
                             unsafe_allow_html=True)
                 s12 = vals.loc[window, k]
                 if s12.notna().sum() > 2:
-                    st.plotly_chart(sparkline(s12, STAGE_COLOR[IND[k]["stage"]]), width="stretch", config={"displayModeBar": False}, key=f"sp-{k}")
+                    st.plotly_chart(sparkline(s12, STAGE_COLOR[IND[k]["stage"]], k=k), width="stretch", config=CHART_CONFIG, key=f"sp-{k}")
                 st.button("Open", key=f"pulse-{k}", on_click=open_page, args=(k,))
 
     # ---------- transmission chain ----------
@@ -255,8 +265,8 @@ if ss.view == "Dashboard":
             col.markdown(f"<p class='cap'>{IND[k]['label']}</p><span class='big' style='font-size:20px'>{fmt(k, row_v[k])}</span> "
                          f"<span class='muted'>{'' if np.isnan(chg) else f'{chg:+.1f}%'}</span>", unsafe_allow_html=True)
             if s12.notna().sum() > 2:
-                col.plotly_chart(sparkline(s12, STAGE_COLOR[IND[k]["stage"]], height=160), width="stretch",
-                                 config={"displayModeBar": False}, key=f"tr-{k}")
+                col.plotly_chart(sparkline(s12, STAGE_COLOR[IND[k]["stage"]], height=160, k=k), width="stretch",
+                                 config=CHART_CONFIG, key=f"tr-{k}")
     with right.container(border=True):
         st.subheader("Coming up")
         start = pd.Period(m, "M").to_timestamp()
