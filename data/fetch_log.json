@@ -1,0 +1,29 @@
+{
+  "run_at": "2026-11-23T05:58:06+00:00",
+  "ok": [
+    "payems",
+    "unrate",
+    "cpi_us",
+    "gdp_us",
+    "dff",
+    "walcl",
+    "wresbal",
+    "brent",
+    "us10",
+    "us2",
+    "vix",
+    "usdinr",
+    "in10",
+    "cpi_in",
+    "fx_in",
+    "nifty",
+    "bank",
+    "sp",
+    "ndx",
+    "gold",
+    "silver",
+    "dxy",
+    "invix"
+  ],
+  "failed": {}
+}

@@ -1,0 +1,3 @@
+# India data from the RBI (https://data.rbi.org.in, DBIE). One row per month; leave a cell empty if unknown.
+# month = YYYY-MM. repo and cpi_yoy in %. liquidity_lakh_cr: + surplus / - deficit. cad_pct_gdp: negative = deficit (quarterly; put it on the quarter's last month).
+month,repo,cpi_yoy,fx_reserves_bn,liquidity_lakh_cr,cad_pct_gdp

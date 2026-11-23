@@ -1,0 +1,120 @@
+"""Turn raw files into the monthly tables the app reads.
+
+Run:  python build.py
+Writes:
+  data/monthly.csv   one row per month, one column per dashboard indicator
+  data/signals.csv   same shape, each cell T (tailwind), H (headwind) or N
+  data/asof.csv      which month each shown value actually comes from
+  data/meta.json     last update time and which sources are missing
+"""
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from config import INDICATORS, RAW, START
+
+DATA = Path("data")
+
+
+def load_raw_monthly() -> pd.DataFrame:
+    months = pd.period_range(START, pd.Timestamp.today(), freq="M")
+    out = pd.DataFrame(index=months)
+    manual_cache = {}
+    for name, spec in RAW.items():
+        if spec["source"] == "manual":
+            path = DATA / "manual" / spec["file"]
+            if not path.exists():
+                out[name] = np.nan
+                continue
+            if path not in manual_cache:
+                m = pd.read_csv(path, comment="#")
+                m["month"] = pd.PeriodIndex(pd.to_datetime(m["month"]), freq="M")
+                manual_cache[path] = m.groupby("month").last()
+            df = manual_cache[path]
+            out[name] = df[spec["col"]].reindex(months) if spec["col"] in df else np.nan
+            continue
+        path = DATA / "raw" / f"{name}.csv"
+        if not path.exists():
+            out[name] = np.nan
+            continue
+        s = pd.read_csv(path, parse_dates=["date"], index_col="date")["value"]
+        monthly = getattr(s.resample("ME"), spec.get("agg", "last"))()
+        monthly.index = monthly.index.to_period("M")
+        out[name] = monthly.reindex(months)
+    # quarterly / slow series: carry the last known value forward a few months
+    for col in ["gdp_us", "cad_in", "repo", "pmi_us", "pmi_in", "liq"]:
+        out[col] = out[col].ffill(limit=3)
+    return out
+
+
+def compute_indicators(r: pd.DataFrame) -> pd.DataFrame:
+    vals = pd.DataFrame(index=r.index)
+    for ind in INDICATORS:
+        try:
+            vals[ind["k"]] = eval(ind["calc"], {"np": np}, {"r": r})  # expressions come from config.py
+        except Exception as exc:
+            print(f"could not compute {ind['k']}: {exc}")
+            vals[ind["k"]] = np.nan
+    return vals
+
+
+def classify(s: pd.Series, rule: dict) -> pd.Series:
+    out = pd.Series("N", index=s.index)
+    t = rule["type"]
+    if t == "neutral":
+        pass
+    elif t == "change":
+        n = rule.get("months", 3)
+        d = s.pct_change(n, fill_method=None) * 100 if rule.get("pct") else s.diff(n)
+        # "a big move" = more than half its usual size over the last 5 years
+        thr = 0.5 * d.rolling(60, min_periods=24).std()
+        thr = thr.fillna(d.abs().median())
+        signed = d * rule["polarity"]
+        out[signed > thr] = "T"
+        out[signed < -thr] = "H"
+    elif t == "level":
+        if "good_below" in rule:
+            out[s < rule["good_below"]] = "T"
+            out[s > rule["bad_above"]] = "H"
+        else:
+            out[s > rule["good_above"]] = "T"
+            out[s < rule["bad_below"]] = "H"
+    elif t == "sign":
+        dead = rule.get("dead", 0)
+        out[s * rule["polarity"] > dead] = "T"
+        out[s * rule["polarity"] < -dead] = "H"
+    out[s.isna()] = ""  # no data -> no label
+    return out
+
+
+def main() -> None:
+    raw = load_raw_monthly()
+    actual = compute_indicators(raw)  # only months that have a real reading
+    sig_actual = pd.DataFrame({ind["k"]: classify(actual[ind["k"]], ind["rule"]) for ind in INDICATORS}, index=actual.index)
+    # Monthly / weekly releases lag (e.g. October CPI comes out in November), so carry the
+    # latest reading forward up to 3 months and remember which month it really belongs to.
+    vals = actual.ffill(limit=3)
+    sigs = sig_actual.replace("", np.nan).ffill(limit=3).fillna("")
+    asof = pd.DataFrame({c: pd.Series(np.where(actual[c].notna(), actual.index.astype(str), None), index=actual.index)
+                         for c in actual.columns}).ffill(limit=3).fillna("")
+    keep = vals.notna().sum(axis=1) >= 5  # keep months that have at least a handful of indicators
+    vals, sigs, asof = vals[keep], sigs[keep], asof[keep]
+    for df in (vals, sigs, asof):
+        df.index = df.index.astype(str)
+    vals.to_csv(DATA / "monthly.csv", index_label="month")
+    sigs.to_csv(DATA / "signals.csv", index_label="month")
+    asof.to_csv(DATA / "asof.csv", index_label="month")
+    missing = [ind["k"] for ind in INDICATORS if vals[ind["k"]].notna().sum() == 0]
+    meta = {"built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "first_month": vals.index.min() if len(vals) else None,
+            "last_month": vals.index.max() if len(vals) else None,
+            "missing_indicators": missing}
+    (DATA / "meta.json").write_text(json.dumps(meta, indent=2))
+    print(f"built {len(vals)} months ({meta['first_month']} to {meta['last_month']}); missing: {missing or 'none'}")
+
+
+if __name__ == "__main__":
+    main()
