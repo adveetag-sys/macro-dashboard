@@ -141,7 +141,9 @@ INFO = {
     ),
     "inCpi": dict(
         what="How much prices of everyday goods and services in India rose compared with a year ago (headline CPI, combined rural and urban).",
-        source="Ministry of Statistics (MoSPI), around the 12th of the next month. The base year changed to 2024 from January 2026. Filled in data/manual/rbi.csv.",
+        source="Ministry of Statistics (MoSPI), around the 12th of the next month, filled in data/manual/rbi.csv from Jan 2014 (base year 2024 from January 2026). "
+               "Before 2014 it uses the OECD series on FRED, which follows CPI for Industrial Workers (CPI-IW), India's main inflation measure at the time "
+               "(for example 10.75% in Aug 2013, as officially published).",
         read="The RBI's target is 4%, with a band of 2–6%. Above 6% breaks the upper limit and puts pressure on the RBI to hike. Food (vegetables, pulses) makes it swing a lot.",
         path="High CPI → RBI keeps rates high or hikes → borrowing costs rise → slower growth and lower stock valuations. "
              "Oil and a weak rupee both push CPI up.",
@@ -159,7 +161,7 @@ INFO = {
     "inLiq": dict(
         what="Whether Indian banks have spare cash (surplus) or are short of cash (deficit) in the system, based on the RBI's liquidity operations.",
         source="Monthly average of the RBI's daily net LAF position, from the Governor's policy statements and the RBI Bulletin's 'State of the Economy'. "
-               "Filled by hand in data/manual/rbi.csv (liquidity_lakh_cr), from Aug 2025.",
+               "Filled by hand in data/manual/rbi.csv (liquidity_lakh_cr): from Aug 2025, plus RBI-stated averages for Jul and Sep 2013, Feb 2020 and May 2022.",
         read="Surplus = easy money; overnight rates sit near the bottom of the RBI's corridor. Deficit = tight money; overnight rates rise above the repo rate. "
              "A deficit larger than ₹1 lakh crore is significant. It hit record surpluses of about ₹9.7 lakh crore in early September 2026.",
         path="RBI selling dollars or tax outflows → less rupee cash → deficit → short-term rates rise → Bank Nifty under pressure.",
@@ -174,6 +176,17 @@ INFO = {
         path="Strong growth → better company earnings → supports Nifty and attracts long-term foreign money (FDI and FIIs). "
              "Weak growth → RBI more likely to cut, but earnings and stocks suffer.",
         watch="Growth slowing while inflation rises (stagflation risk), and gaps between GDP and on-the-ground data like PMI, GST and credit growth.",
+    ),
+    "inDur": dict(
+        what="Net durable liquidity: the longer-lasting cash in India's banking system, after counting the government's balances with the RBI and the RBI's longer-term operations. "
+             "The daily 'bank liquidity' figure shows what banks park with or borrow from the RBI each day; durable liquidity shows the slower, structural position underneath.",
+        source="RBI's daily 'Money Market Operations' press release (the 'Net durable liquidity as on <date>' line, updated about every two weeks). "
+               "Filled by hand in data/manual/rbi.csv (durable_lakh_cr), using the last reading of each month. Sparse before 2025.",
+        read="A surplus of ₹2–4 lakh crore is comfortable. Above ₹7 lakh crore is very flush (₹10.1 lakh crore at end-Sep 2026). "
+             "A durable deficit means the RBI needs to add money for months, usually by buying bonds (OMOs) or doing forex swaps.",
+        path="Big durable surplus → banks have plenty of money to lend → short-term rates stay low → supports credit growth and Bank Nifty. "
+             "It shrinks when the RBI sells dollars to defend the rupee, when the government builds up cash, or when currency demand rises.",
+        watch="Whether it is rising or falling over several readings, and big moves after RBI forex intervention.",
     ),
     "cad": dict(
         what="India's current account balance: everything India earns from abroad (exports, services, remittances) minus everything it pays abroad (imports, interest, dividends). "

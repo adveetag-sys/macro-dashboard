@@ -58,6 +58,7 @@ RAW = {
     # Manual CSVs in data/manual/ (see README). Columns: month,<name>
     "repo":     {"source": "manual", "file": "rbi.csv",   "col": "repo"},
     "liq":      {"source": "manual", "file": "rbi.csv",   "col": "liquidity_lakh_cr"},
+    "dliq":     {"source": "manual", "file": "rbi.csv",   "col": "durable_lakh_cr"},
     "cad_in":   {"source": "manual", "file": "rbi.csv",   "col": "cad_pct_gdp"},
     "fx_rbi":   {"source": "manual", "file": "rbi.csv",   "col": "fx_reserves_bn"},
     "cpi_rbi":  {"source": "manual", "file": "rbi.csv",   "col": "cpi_yoy"},
@@ -124,6 +125,8 @@ INDICATORS = [
          calc="r.gdp_off.ffill(limit=3).combine_first(((1 + r.gdp_in_qq.dropna() / 100).rolling(4).apply(np.prod, raw=True) * 100 - 100)"
               ".reindex(r.index).ffill(limit=3)).combine_first(r.gdp_in_yy.ffill(limit=3))",
          fmt="{:.1f}%", rule={"type": "level", "good_above": 7.0, "bad_below": 5.5}),
+    dict(k="inDur", label="Durable liquidity", stage="R", topic="rbi", top=False, sub="Longer-lasting surplus (+) or deficit (−)",
+         calc="r.dliq", fmt="₹{:+.2f} lakh cr", rule={"type": "sign", "polarity": +1, "dead": 1.0}),
     dict(k="cad", label="India current account", stage="R", topic="incpi", top=False, sub="% of GDP",
          calc="r.cad_in.combine_first(r.cad_imf.shift(3).ffill(limit=11).loc[:'2024-03'].reindex(r.index))", fmt="{:+.1f}%", rule={"type": "level", "good_above": -1.5, "bad_below": -2.5}),
     # 4 Moves last

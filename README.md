@@ -51,6 +51,7 @@ Some India data has no clean free download, so you add it by hand in `data/manua
 | ~12th–14th | India CPI (MoSPI press release) | `rbi.csv` · `cpi_yoy` · previous month |
 | RBI policy day (6 a year) | Repo decision; Governor's statement gives monthly average liquidity | `rbi.csv` · `repo` (that month onwards), `liquidity_lakh_cr` (months it lists) |
 | ~25th | RBI Bulletin "State of the Economy" (monthly liquidity average) | `rbi.csv` · `liquidity_lakh_cr` |
+| Twice a month | RBI "Money Market Operations" release: line I, net durable liquidity | `rbi.csv` · `durable_lakh_cr` · month of the "as on" date (keep the last one in the month) |
 | End of Feb / May / Aug / Nov | India GDP for the quarter (MoSPI) | `rbi.csv` · `gdp_in_yoy` · FIRST month of the quarter (Jul–Sep → `YYYY-07`) |
 | ~2–3 months after quarter end | India current account % of GDP (RBI BoP release) | `rbi.csv` · `cad_pct_gdp` · LAST month of the quarter (Jul–Sep → `YYYY-09`) |
 | As dates are announced | FOMC, RBI, CPI, jobs, budget dates | `events.csv` · `date,event,type` |
