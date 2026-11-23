@@ -117,8 +117,8 @@ INDICATORS = [
     dict(k="fx", label="Forex reserves", stage="R", topic="rbi", top=True, sub="RBI firepower",
          calc="r.fx_rbi.combine_first(r.fx_in / 1e3)", fmt="${:,.0f}B",
          rule={"type": "change", "months": 3, "polarity": +1, "pct": True}),
-    dict(k="inLiq", label="Bank liquidity", stage="R", topic="rbi", top=False, sub="₹ lakh crore, + = surplus",
-         calc="r.liq", fmt="{:+.1f}", rule={"type": "sign", "polarity": +1, "dead": 0.5}),
+    dict(k="inLiq", label="Bank liquidity", stage="R", topic="rbi", top=False, sub="Avg daily surplus (+) or deficit (−)",
+         calc="r.liq", fmt="₹{:+.2f} lakh cr", rule={"type": "sign", "polarity": +1, "dead": 0.5}),
     dict(k="inGdp", label="India GDP growth", stage="R", topic="incpi", top=True, sub="Quarterly, year on year",
          calc="r.gdp_off.ffill(limit=3).combine_first(((1 + r.gdp_in_qq.dropna() / 100).rolling(4).apply(np.prod, raw=True) * 100 - 100)"
               ".reindex(r.index).ffill(limit=3)).combine_first(r.gdp_in_yy.ffill(limit=3))",

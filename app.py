@@ -350,7 +350,7 @@ elif ss.view == "Understand the flow":
              'node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, fontcolor="#F3F4F6", penwidth=2];',
              'edge [color="#5B6886", arrowsize=0.7];']
     for tp in order:
-        ks = [i["k"] for i in INDICATORS if i["topic"] == tp][:2]
+        ks = [i["k"] for i in INDICATORS if i["topic"] == tp and vals[i["k"]].notna().any()]
         codes = {row_s[k] for k in ks if row_s[k]}
         code = "H" if codes == {"H"} or ("H" in codes and "T" not in codes) else ("T" if "T" in codes and "H" not in codes else "N")
         stage = IND[ks[0]]["stage"]
