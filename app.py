@@ -12,6 +12,18 @@ from topics import TOPICS
 from events import EVENTS, KEY
 from indicator_info import INFO
 
+EVENT_IMPACT = {
+    "fomc": ("Fed decision", "Sets US rates. A hike or hawkish tone pushes US yields and the dollar up, which usually means FII selling and a weaker rupee. A cut does the reverse. India reacts the next morning."),
+    "rbi": ("RBI decision", "Changes the repo rate and liquidity steps. Moves bond yields, Bank Nifty and the rupee the same day."),
+    "us_jobs": ("US jobs", "Strong hiring keeps the Fed tight: yields and the dollar rise. One of the biggest market movers each month."),
+    "us_cpi": ("US inflation", "A hot reading raises rate-hike fears: dollar up, FII outflows, pressure on Indian stocks."),
+    "in_cpi": ("India inflation", "Above 6% raises the odds of an RBI hike; below 4% opens room for cuts. Moves bond yields and banks."),
+    "in_gdp": ("India growth", "Strong growth supports earnings and foreign interest. A weak number raises rate-cut hopes."),
+    "pmi": ("Factory surveys", "Early signal of growth turning. Above 50 = expanding."),
+    "tax": ("Advance tax", "Companies pay tax to the government, pulling cash out of banks. Liquidity tightens for a few days and short-term rates jump; watch Bank Nifty."),
+    "budget": ("Budget", "Sets government borrowing (bond supply, so India 10Y), taxes and spending. Usually a high-volatility day."),
+}
+
 st.set_page_config(page_title="Macro Dashboard · USA → India", layout="wide")
 
 IND = {i["k"]: i for i in INDICATORS}
@@ -320,11 +332,14 @@ if ss.view == "Dashboard":
     with right.container(border=True):
         st.subheader("Coming up")
         start = pd.Period(m, "M").to_timestamp()
-        nxt = events[events["date"] >= start].sort_values("date").head(5)
+        nxt = events[events["date"] >= start].sort_values("date").head(8)
         if nxt.empty:
             st.caption("Add dates to data/manual/events.csv to list them here.")
         for _, e in nxt.iterrows():
-            st.markdown(f"**{e['date']:%d %b %Y}** · {e['event']}")
+            tag, note = EVENT_IMPACT.get(str(e.get("type", "")).strip(), ("", ""))
+            st.markdown(f"**{e['date']:%d %b %Y}** · {e['event']}"
+                        + (f"<br><span class='muted' style='font-size:12px'><b>{tag}:</b> {note}</span>" if note else ""),
+                        unsafe_allow_html=True)
 
 # ---------- flow view ----------
 elif ss.view == "Understand the flow":

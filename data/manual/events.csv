@@ -1,4 +1,20 @@
 # Upcoming events shown under "Coming up". date = YYYY-MM-DD.
-date,event
-2026-12-09,FOMC decision
-2026-12-10,US CPI (November)
+# type decides the "what it moves" note: fomc, rbi, us_jobs, us_cpi, in_cpi, in_gdp, pmi, tax, budget (or leave empty).
+# Sources: Federal Reserve FOMC calendar, BLS release schedule, RBI MPC resolutions, MoSPI release notes. "(expected)" = usual date, not yet confirmed.
+date,event,type
+2026-11-30,India GDP for Jul-Sep 2026 (MoSPI),in_gdp
+2026-12-01,US ISM and HSBC India manufacturing PMI (expected),pmi
+2026-12-04,RBI policy decision (MPC meets Dec 2-4),rbi
+2026-12-04,US jobs report for November,us_jobs
+2026-12-09,Fed rate decision (FOMC Dec 8-9),fomc
+2026-12-10,US CPI for November,us_cpi
+2026-12-14,India CPI for November,in_cpi
+2026-12-15,India advance tax (3rd instalment),tax
+2027-01-08,US jobs report for December,us_jobs
+2027-01-27,Fed rate decision (FOMC Jan 26-27),fomc
+2027-02-01,Union Budget (expected),budget
+2027-02-05,US jobs report for January,us_jobs
+2027-03-05,US jobs report for February,us_jobs
+2027-03-15,India advance tax (4th instalment),tax
+2027-03-17,Fed rate decision (FOMC Mar 16-17),fomc
+2027-04-28,Fed rate decision (FOMC Apr 27-28),fomc

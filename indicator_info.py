@@ -157,8 +157,10 @@ INFO = {
     ),
     "inLiq": dict(
         what="Whether Indian banks have spare cash (surplus) or are short of cash (deficit) in the system, based on the RBI's liquidity operations.",
-        source="RBI daily liquidity data. Not filled yet; would go in data/manual/rbi.csv.",
-        read="Surplus = easy money and lower short-term rates. Deficit = tight money. A deficit larger than ₹1 lakh crore is significant.",
+        source="Monthly average of the RBI's daily net LAF position, from the Governor's policy statements and the RBI Bulletin's 'State of the Economy'. "
+               "Filled by hand in data/manual/rbi.csv (liquidity_lakh_cr), from Aug 2025.",
+        read="Surplus = easy money; overnight rates sit near the bottom of the RBI's corridor. Deficit = tight money; overnight rates rise above the repo rate. "
+             "A deficit larger than ₹1 lakh crore is significant. It hit record surpluses of about ₹9.7 lakh crore in early September 2026.",
         path="RBI selling dollars or tax outflows → less rupee cash → deficit → short-term rates rise → Bank Nifty under pressure.",
         watch="A swing from surplus into deficit.",
     ),
