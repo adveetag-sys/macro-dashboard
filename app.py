@@ -7,11 +7,24 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+import importlib
+
+import config
+import events
+import indicator_info
+import simulator as sim
+import topics
+
+# Streamlit Cloud re-runs app.py after each push but keeps the other .py files it already loaded, so a push
+# that changes them (new indicators, new simulator parts) would mix new and old code. Reloading them on every
+# run (a few milliseconds) means a push never needs an app reboot.
+for _mod in (config, topics, events, indicator_info, sim):
+    importlib.reload(_mod)
+
 from config import INDICATORS, PULSE, STAGES, TRENDS
 from topics import TOPICS
 from events import EVENTS, KEY
 from indicator_info import INFO
-import simulator as sim
 
 EVENT_IMPACT = {
     "fomc": ("Fed decision", "Sets US rates. A hike or hawkish tone pushes US yields and the dollar up, which usually means FII selling and a weaker rupee. A cut does the reverse. India reacts the next morning."),
