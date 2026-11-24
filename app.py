@@ -777,7 +777,7 @@ else:
         link_models = sim_link_models(stamp)
         check, test_from = sim_validate(stamp)
         any_m = next(iter(models.values()))
-        st.markdown("Set how much things move over the next **3 months**, in three steps like the flow chart: "
+        st.markdown("Set where things will be in **3 months**, in real units (Brent in $, rates in %, the rupee in ₹), in three steps like the flow chart: "
                     "**US leaders** → **US markets** → **India** → results. You set Brent, US inflation and US GDP (and the RBI repo); every other slider follows the step before by its "
                     "historical slope (raise US inflation and the Fed, hiring, US 10Y, dollar, S&P 500, rupee and CPI shift with it). Each has a **Follows** switch: "
                     "turn it off and that slider stays where you put it when things above it move. Whether on or off, if you move it yourself, "
@@ -789,8 +789,65 @@ else:
         last_lead = lead_hist.dropna(how="all").iloc[-1]
         last_x = moves_hist.dropna(how="all").iloc[-1]
 
-        def snap(v, lo, hi, step):
-            return round(float(np.clip(round(v / step) * step, lo, hi)), 2)
+        # Sliders show real levels (Brent in $, rates in %, ...). The model works in 3-month moves, so each
+        # slider's level is turned into a move from today's level: % change for prices, point change for rates.
+        now = vals.iloc[-1]
+        jobs_now = vals["usJobs"].rolling(3).mean().dropna()
+        LEVEL = {  # key: (today's level, move type, slider step, slider format, how to show it)
+            "brent": (now["brent"], "pct", 0.1, "$%.1f", lambda x: f"${x:,.1f}"),
+            "cpi":   (now["usCpi"], "diff", 0.01, "%.2f%%", lambda x: f"{x:.2f}%"),
+            "gdp":   (now["gdp"], "diff", 0.05, "%.1f%%", lambda x: f"{x:.1f}%"),
+            "jobs":  (jobs_now.iloc[-1] if len(jobs_now) else 0.0, "diff", 5.0, "%.0fk", lambda x: f"{x:,.0f}k/month"),
+            "fed":   (now["fed"], "diff", 0.01, "%.2f%%", lambda x: f"{x:.2f}%"),
+            "fedBs": (now["fedBs"], "pct", 0.01, "$%.2fT", lambda x: f"${x:.2f}T"),
+            "us10":  (now["us10"], "diff", 0.01, "%.2f%%", lambda x: f"{x:.2f}%"),
+            "dxy":   (now["dxy"], "pct", 0.01, "%.2f", lambda x: f"{x:.1f}"),
+            "sp":    (now["sp"], "pct", 1.0, "%.0f", lambda x: f"{x:,.0f}"),
+            "rbi":   (now["rbi"], "diff", 0.05, "%.2f%%", lambda x: f"{x:.2f}%"),
+            "inr":   (now["inr"], "pct", 0.01, "₹%.2f", lambda x: f"₹{x:.2f}"),
+            "inCpi": (now["inCpi"], "diff", 0.01, "%.2f%%", lambda x: f"{x:.2f}%"),
+        }
+        LEVEL_NAME = {"cpi": "US CPI inflation (% a year)", "gdp": "US GDP growth (% a year)", "jobs": "US hiring (avg new jobs a month)",
+                      "fed": "Fed funds rate (%)", "fedBs": "Fed balance sheet ($ trillion)", "brent": "Brent oil ($ a barrel)",
+                      "us10": "US 10Y yield (%)", "dxy": "Dollar index (DXY)", "sp": "S&P 500", "rbi": "RBI repo rate (%)",
+                      "inr": "USD/INR (₹ per $)", "inCpi": "India CPI inflation (% a year)"}
+        MOVE_KEY = {**{k: f"wl_{k}" for k in sim.LEADERS}, **{k: f"wm_{k}" for k in sim.MARKETS}, **{k: f"wi_{k}" for k in sim.INDIA}}
+        MOVE_RANGE = {**{k: v[2:4] for k, v in sim.LEADERS.items()}, **{k: v[3:5] for k, v in sim.MARKETS.items()},
+                      **{k: v[3:5] for k, v in sim.INDIA.items()}}
+
+        def to_level(k, move):
+            base, kind, *_ = LEVEL[k]
+            return base * (1 + move / 100) if kind == "pct" else base + move
+
+        def to_move(k, level):
+            base, kind, *_ = LEVEL[k]
+            return (level / base - 1) * 100 if kind == "pct" else level - base
+
+        def clip_move(k, move):
+            lo, hi = MOVE_RANGE[k]
+            return float(np.clip(move, lo, hi))
+
+        def level_changed(k):  # the user dragged a slider: store its move
+            ss[MOVE_KEY[k]] = clip_move(k, to_move(k, ss[f"lv_{k}"]))
+
+        def level_slider(k, help_txt=None):
+            """A slider in real units that reads and writes the move kept in session state."""
+            base, _, step, fmt, _show = LEVEL[k]
+            lo, hi = (to_level(k, x) for x in MOVE_RANGE[k])
+            lo, hi = np.floor(lo / step) * step, np.ceil(hi / step) * step
+            ss.setdefault(MOVE_KEY[k], 0.0)
+            ss[f"lv_{k}"] = float(np.clip(round(to_level(k, ss[MOVE_KEY[k]]) / step) * step, lo, hi))
+            st.slider(LEVEL_NAME[k], float(lo), float(hi), step=float(step), format=fmt, key=f"lv_{k}",
+                      on_change=level_changed, args=(k,), help=help_txt)
+            return ss[MOVE_KEY[k]]
+
+        def change_txt(k, move):
+            unit = "%" if LEVEL[k][1] == "pct" else "pts"
+            ch = f"{move:+,.0f}k" if k == "jobs" else fmt_move(move, unit)
+            return f"Today {LEVEL[k][4](LEVEL[k][0])} · change {ch}"
+
+        def implied_txt(k, move):
+            return f"{LEVEL[k][4](to_level(k, move))}"
 
         def implied_m_follow(leaders):
             return sim.implied_markets(lead_models, leaders)
@@ -809,123 +866,106 @@ else:
             for k in FOLLOWERS:
                 ss[f"fo_{k}"] = False
             st.rerun()
-        if b1.button("Fill in the last 3 months' actual moves"):
-            for k, (_, _, lo, hi, step, _) in sim.LEADERS.items():
+        if b1.button("Repeat the last 3 months' moves"):
+            for k in sim.LEADERS:
                 v = last_lead.get(k, np.nan)
-                ss[f"wl_{k}"] = 0.0 if np.isnan(v) else snap(v, lo, hi, step)
-            for k, (_, _, _, lo, hi, step) in sim.MARKETS.items():
+                ss[f"wl_{k}"] = 0.0 if np.isnan(v) else clip_move(k, v)
+            for k in sim.MARKETS:
                 v = last_x.get(k, np.nan)
-                ss[f"wm_{k}"] = 0.0 if np.isnan(v) else snap(v, lo, hi, step)
-            for k, (_, _, _, lo, hi, step, _) in sim.INDIA.items():
+                ss[f"wm_{k}"] = 0.0 if np.isnan(v) else clip_move(k, v)
+            for k in sim.INDIA:
                 v = last_x.get(k, np.nan)
-                ss[f"wi_{k}"] = 0.0 if np.isnan(v) else snap(v, lo, hi, step)
+                ss[f"wi_{k}"] = 0.0 if np.isnan(v) else clip_move(k, v)
             ss.wi_prev_l = sim.implied_leaders(link_models, {k: ss[f"wl_{k}"] for k in sim.FIXED_LEADERS})
             ss.wi_prev_m = implied_m_follow({k: ss[f"wl_{k}"] for k in sim.LEADERS})
             ss.wi_prev_i = sim.implied_india(india_models, {k: ss[f"wm_{k}"] for k in sim.MARKETS}, ss["wl_brent"], ss["wi_rbi"])
             st.rerun()
-        if b2.button("Reset all to 0"):
-            for k in sim.LEADERS:
-                ss[f"wl_{k}"] = 0.0
-            for k in sim.MARKETS:
-                ss[f"wm_{k}"] = 0.0
-            for k in sim.INDIA:
-                ss[f"wi_{k}"] = 0.0
+        if b2.button("Reset to today's levels"):
+            for k in MOVE_KEY:
+                ss[MOVE_KEY[k]] = 0.0
             ss.wi_prev_l = {k: 0.0 for k in sim.LINKED_LEADERS}
             ss.wi_prev_m = {k: 0.0 for k in sim.MARKETS}
             ss.wi_prev_i = {k: 0.0 for k in sim.FOLLOW}
             st.rerun()
 
-        def last_lead_txt(k, unit):
-            lv = last_lead.get(k, np.nan)
-            return "—" if np.isnan(lv) else f"{lv:+,.0f}k" if k == "jobs" else fmt_move(lv, unit)
+        def follow(keys, implied, prev_name):
+            """Move the followers by the change in what the step above implies (if their switch is on).
+            prev is always updated, so turning a switch back on only passes on later changes (no sudden jump)."""
+            prev = ss.get(prev_name, {k: 0.0 for k in keys})
+            for k in keys:
+                ss.setdefault(MOVE_KEY[k], 0.0)
+                if ss[f"fo_{k}"] and abs(implied[k] - prev.get(k, 0.0)) > 1e-9:
+                    ss[MOVE_KEY[k]] = clip_move(k, ss[MOVE_KEY[k]] + implied[k] - prev.get(k, 0.0))
+            ss[prev_name] = implied
 
         # Step 1: US leaders. Brent, inflation and GDP are set by you; hiring, the Fed rate and the
         # balance sheet follow them (unless their Follows switch is off).
-        st.markdown("<p class='cap'>Step 1 · US leaders · you set these</p>", unsafe_allow_html=True)
+        st.markdown("<p class='cap'>Step 1 · US leaders · you set these (where they will be in 3 months)</p>", unsafe_allow_html=True)
         leaders = {}
         cols = st.columns(3)
         for col, k in zip(cols, sim.FIXED_LEADERS):
-            lbl, unit, lo, hi, step, hint = sim.LEADERS[k]
             with col:
-                ss.setdefault(f"wl_{k}", 0.0)
-                leaders[k] = st.slider(f"{lbl} ({unit})", float(lo), float(hi), step=float(step), key=f"wl_{k}", help=hint)
-                st.caption(f"Last 3 months: {last_lead_txt(k, unit)}")
+                leaders[k] = level_slider(k, sim.LEADERS[k][5])
+                st.caption(change_txt(k, leaders[k]))
         imp_l = sim.implied_leaders(link_models, leaders)
-        prev_l = ss.get("wi_prev_l", {k: 0.0 for k in sim.LINKED_LEADERS})
-        for k in sim.LINKED_LEADERS:
-            _, _, lo, hi, step, _ = sim.LEADERS[k]
-            ss.setdefault(f"wl_{k}", 0.0)
-            if ss[f"fo_{k}"] and abs(imp_l[k] - prev_l.get(k, 0.0)) > 1e-9:
-                ss[f"wl_{k}"] = snap(ss[f"wl_{k}"] + imp_l[k] - prev_l.get(k, 0.0), lo, hi, step)
-        ss.wi_prev_l = imp_l
+        follow(sim.LINKED_LEADERS, imp_l, "wi_prev_l")
         st.markdown("<p class='cap'>Step 1 · US leaders · follow the three above</p>", unsafe_allow_html=True)
         cols = st.columns(3)
         for col, k in zip(cols, sim.LINKED_LEADERS):
-            lbl, unit, lo, hi, step, hint = sim.LEADERS[k]
             rule = link_models[k].get("rule")
             with col:
-                leaders[k] = st.slider(f"{lbl} ({unit})", float(lo), float(hi), step=float(step), key=f"wl_{k}", help=hint)
+                leaders[k] = level_slider(k, sim.LEADERS[k][5])
                 st.toggle("Follows Brent, inflation, GDP ⚠", key=f"fo_{k}",
                           help="On: moves by the slope when Brent, US inflation or US GDP move. Off: stays where you set it. "
                                + ("Uses the inertial Taylor rule (a textbook rule), not a learned slope. " if rule else "")
                                + "⚠ This link did not hold up on years it was not learned from.")
-                imp_txt = fmt_move(imp_l[k], unit) if k != "jobs" else f"{imp_l[k]:+,.0f}k"
-                st.caption(f"{'Taylor rule implies' if rule else 'Brent, inflation and GDP imply'} {imp_txt} · last 3 months: {last_lead_txt(k, unit)}")
+                st.caption(f"{change_txt(k, leaders[k])} · {'Taylor rule points to' if rule else 'Brent, inflation and GDP point to'} {implied_txt(k, imp_l[k])}")
 
         # Step 2: US markets follow the leaders by slope, unless their Follows switch is off.
-        # prev is always updated, so turning a switch back on only passes on later changes (no sudden jump).
         imp_m = implied_m_follow(leaders)
-        prev_m = ss.get("wi_prev_m", {k: 0.0 for k in sim.MARKETS})
-        for k, (_, _, _, lo, hi, step) in sim.MARKETS.items():
-            ss.setdefault(f"wm_{k}", 0.0)
-            if ss[f"fo_{k}"] and abs(imp_m[k] - prev_m.get(k, 0.0)) > 1e-9:
-                ss[f"wm_{k}"] = snap(ss[f"wm_{k}"] + imp_m[k] - prev_m.get(k, 0.0), lo, hi, step)
-        ss.wi_prev_m = imp_m
-        st.markdown("<p class='cap'>Step 2 · US markets (total move)</p>", unsafe_allow_html=True)
+        follow(list(sim.MARKETS), imp_m, "wi_prev_m")
+        st.markdown("<p class='cap'>Step 2 · US markets in 3 months</p>", unsafe_allow_html=True)
         markets = {}
         cols = st.columns(3)
-        for col, (k, (lbl, _, unit, lo, hi, step)) in zip(cols, sim.MARKETS.items()):
+        for col, k in zip(cols, sim.MARKETS):
             with col:
-                markets[k] = st.slider(f"{lbl} ({unit})", float(lo), float(hi), step=float(step), key=f"wm_{k}")
+                markets[k] = level_slider(k)
                 st.toggle("Follows the leaders" + (" ⚠" if k in WEAK else ""), key=f"fo_{k}",
                           help="On: moves by the historical slope when the leaders move. Off: stays where you set it. "
                                + ("⚠ This link did not hold up on years it was not learned from." if k in WEAK else ""))
-                st.caption(f"Leaders imply {fmt_move(imp_m[k], unit)} · last 3 months: {fmt_move(last_x.get(k, np.nan), unit)}")
+                st.caption(f"{change_txt(k, markets[k])} · leaders point to {implied_txt(k, imp_m[k])}")
 
         # Step 3: India. The repo is the user's call; the rupee and India CPI follow the markets, oil and the repo.
-        st.markdown("<p class='cap'>Step 3 · India (total move)</p>", unsafe_allow_html=True)
+        st.markdown("<p class='cap'>Step 3 · India in 3 months</p>", unsafe_allow_html=True)
         india = {}
         cols = st.columns(3)
-        lbl, _, unit, lo, hi, step, hint = sim.INDIA["rbi"]
         with cols[0]:
-            ss.setdefault("wi_rbi", 0.0)
-            india["rbi"] = st.slider(f"{lbl} ({unit})", float(lo), float(hi), step=float(step), key="wi_rbi", help=hint)
-            st.caption(f"Your call: history barely predicts RBI moves · last 3 months: {fmt_move(last_x.get('rbi', np.nan), unit)}")
+            india["rbi"] = level_slider("rbi", sim.INDIA["rbi"][6])
+            st.caption(f"{change_txt('rbi', india['rbi'])} · your call: history barely predicts RBI moves")
         imp_i = sim.implied_india(india_models, markets, leaders["brent"], india["rbi"])
-        prev_i = ss.get("wi_prev_i", {k: 0.0 for k in sim.FOLLOW})
-        for k in sim.FOLLOW:
-            _, _, _, lo, hi, step, _ = sim.INDIA[k]
-            ss.setdefault(f"wi_{k}", 0.0)
-            if ss[f"fo_{k}"] and abs(imp_i[k] - prev_i.get(k, 0.0)) > 1e-9:
-                ss[f"wi_{k}"] = snap(ss[f"wi_{k}"] + imp_i[k] - prev_i.get(k, 0.0), lo, hi, step)
-        ss.wi_prev_i = imp_i
+        follow(list(sim.FOLLOW), imp_i, "wi_prev_i")
         for col, k in zip(cols[1:], sim.FOLLOW):
-            lbl, _, unit, lo, hi, step, hint = sim.INDIA[k]
             with col:
-                india[k] = st.slider(f"{lbl} ({unit})", float(lo), float(hi), step=float(step), key=f"wi_{k}", help=hint)
+                india[k] = level_slider(k, sim.INDIA[k][6])
                 st.toggle("Follows markets, oil and repo" + (" ⚠" if k in WEAK else ""), key=f"fo_{k}",
                           help="On: moves by the historical slope when the sliders above move. Off: stays where you set it. "
                                + ("⚠ This link did not hold up on years it was not learned from." if k in WEAK else ""))
                 repo_part = india_models[k]["beta"]["rbi"] * india["rbi"]
-                st.caption(f"Markets, oil and repo imply {fmt_move(imp_i[k], unit)}"
-                           + (f" (repo's part {fmt_move(repo_part, unit)})" if india["rbi"] else "")
-                           + f" · last 3 months: {fmt_move(last_x.get(k, np.nan), unit)}" + (" · + = rupee weaker" if k == "inr" else ""))
+                unit = "%" if LEVEL[k][1] == "pct" else "pts"
+                st.caption(f"{change_txt(k, india[k])} · markets, oil and repo point to {implied_txt(k, imp_i[k])}"
+                           + (f" (repo's part {fmt_move(repo_part, unit)})" if india["rbi"] else ""))
 
         res = sim.what_if(models, {**markets, "brent": leaders["brent"], **india})
         names = {**{k: v[0].split(" (")[0] for k, v in sim.DRIVERS.items()}, **{k: v[0] for k, v in sim.INDIA.items()}}
         tested = check[check["step"] == "3"].set_index("result")
+        RESULT_LEVEL = {"nifty": (now["nifty"], "pct", lambda x: f"{x:,.0f}"), "in10y": (now["in10y"], "diff", lambda x: f"{x:.2f}%")}
+
+        def result_level(t, move):
+            base, kind, show = RESULT_LEVEL[t]
+            return show(base * (1 + move / 100) if kind == "pct" else base + move)
+
         html = ["<table style='width:100%;border-collapse:collapse;font-size:14px'>",
-                "<tr style='text-align:left;color:#A3ADBF'><th style='padding:6px'>Result</th><th>Expected 3-month move</th><th>Likely range (68%)</th>"
+                "<tr style='text-align:left;color:#A3ADBF'><th style='padding:6px'>Result</th><th>Today</th><th>Expected in 3 months</th><th>Likely range (68%)</th>"
                 f"<th>Biggest pushes</th><th>Tested on {test_from[:4]}–{months[-1][:4]}</th></tr>"]
         for t, (lbl, _, unit, note) in sim.TARGETS.items():
             r = res[t]
@@ -935,8 +975,16 @@ else:
             tv = tested.loc[lbl] if lbl in tested.index else None
             test_txt = "—" if tv is None else (f"direction right {tv['direction']:.0%} · range held {tv['inside']:.0%}"
                                                  + (" · sizes unreliable" if tv["skill"] < 0.1 else ""))
+            if t in RESULT_LEVEL:
+                today = RESULT_LEVEL[t][2](RESULT_LEVEL[t][0])
+                expected = f"<b>{result_level(t, r['mid'])}</b> <span class='muted'>({fmt_move(r['mid'], unit)})</span>"
+                rng = f"{result_level(t, r['lo'])} to {result_level(t, r['hi'])}"
+            else:
+                today = "—"
+                expected = f"<b>{fmt_move(r['mid'], unit)}</b>"
+                rng = f"{fmt_move(r['lo'], unit)} to {fmt_move(r['hi'], unit)}"
             html.append(f"<tr style='border-top:1px solid #1F2A44'><td style='padding:6px'>{lbl}<div class='muted' style='font-size:12px'>{note}</div></td>"
-                        f"<td><b>{fmt_move(r['mid'], unit)}</b></td><td>{fmt_move(r['lo'], unit)} to {fmt_move(r['hi'], unit)}</td>"
+                        f"<td>{today}</td><td>{expected}</td><td>{rng}</td>"
                         f"<td class='muted'>{pushes}</td><td class='muted' style='font-size:13px'>{test_txt}</td></tr>")
         html.append("</table>")
         with st.container(border=True):
