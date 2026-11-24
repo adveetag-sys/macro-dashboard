@@ -138,6 +138,16 @@ LEADERS = {  # key: (label, unit, slider min, max, step, help)
     "fedBs": ("Fed balance sheet", "%", -10.0, 10.0, 0.5, "+ = money printing (QE), − = tightening (QT)"),
     "brent": ("Brent oil", "%", -50.0, 50.0, 1.0, "price change"),
 }
+FIXED_LEADERS = ("brent", "cpi", "gdp")    # you set these
+LINKED_LEADERS = ("jobs", "fed", "fedBs")   # these follow the fixed ones (with a Follows switch in the app)
+# The Fed rate follows the Taylor rule (John Taylor, 1993), not a learned slope: learned from this data the Fed
+# "cuts when inflation rises" (it reacts late and cut hard in slowdowns), which is backwards for a what-if.
+# Taylor's rule moves the policy rate 1.5x any change in inflation and 0.5x any change in growth. Central banks move
+# gradually: research (Clarida, Gali and Gertler, 2000) finds a smoothing of about 0.75-0.8 per quarter, so within
+# one 3-month window the Fed takes about a quarter of the full step ("inertial Taylor rule").
+TAYLOR_SPEED = 0.25
+TAYLOR = {"cpi": 1.5 * TAYLOR_SPEED, "gdp": 0.5 * TAYLOR_SPEED, "brent": 0.0}
+
 MARKETS = {  # key: (label, how measured, unit, slider min, max, step)
     "us10": ("US 10Y yield", "diff", "pts", -1.5, 1.5, 0.01),
     "dxy":  ("Dollar index (DXY)", "pct", "%", -10.0, 10.0, 0.1),
@@ -198,6 +208,34 @@ def _ridge(X, y, lam=0.05):
     b = np.linalg.solve(A.T @ A + lam * len(A) * np.eye(A.shape[1]), A.T @ yc.values)
     resid = yc.values - A @ b
     return dict(zip(X.columns, b / sd.values)), 1 - resid.var() / yc.var(), resid.std(ddof=A.shape[1] + 1)
+
+
+def _normal(d):
+    return d[[not any(a <= i <= b for a, b in CRASHES) for i in d.index]]
+
+
+def fit_leader_links(vals, start="2003-01"):
+    """Step 1a: how hiring pace and the Fed balance sheet have moved with Brent, US inflation and US GDP
+    (normal times, same 3-month window); the Fed rate uses the Taylor rule."""
+    L = leader_moves(vals).loc[start:]
+    out = {}
+    for t in LINKED_LEADERS:
+        if t == "fed":
+            out[t] = {"beta": dict(TAYLOR), "rule": "inertial Taylor rule", "r2": np.nan}
+            continue
+        d = _normal(pd.concat([L[list(FIXED_LEADERS)], L[t].rename("y")], axis=1).dropna())
+        out[t] = _fit_simple(d, list(FIXED_LEADERS))
+    return out
+
+
+def implied_leaders(link_models, fixed):
+    """Moves of the linked leaders implied by the fixed leaders' moves (step 1a)."""
+    return {t: sum(m["beta"][k] * fixed.get(k, 0.0) for k in FIXED_LEADERS) for t, m in link_models.items()}
+
+
+def _fit_simple(d, cols, lam=0.05):
+    beta, r2, sd = _ridge(d[cols], d["y"], lam)
+    return {"beta": beta, "r2": r2, "resid_sd": sd, "n": len(d)}
 
 
 def fit_leaders(vals, start="2003-01"):
@@ -278,6 +316,20 @@ def validate(vals, train_end=TRAIN_END):
             te = te[[not any(a <= i <= b for a, b in CRASHES) for i in te.index]]
         rows.append({"step": step, "result": name, **_score(tr, te, cols, lam)})
 
+    Lf = leader_moves(vals)
+    for t in LINKED_LEADERS:
+        d = pd.concat([Lf[list(FIXED_LEADERS)], Lf[t].rename("y")], axis=1).loc["2003-01":].dropna()
+        if t == "fed":  # a fixed rule: nothing to learn, just score it on the test years
+            tr, te = _normal(d.loc[:train_end]), _normal(d.loc[test_start:])
+            pred = sum(TAYLOR[k] * te[k] for k in FIXED_LEADERS)
+            err = te["y"] - pred
+            base = ((te["y"] - tr["y"].mean()) ** 2).mean()
+            sd = (tr["y"] - sum(TAYLOR[k] * tr[k] for k in FIXED_LEADERS)).std()
+            rows.append({"step": "1a", "result": LEADERS[t][0] + " (inertial Taylor rule)", "skill": 1 - (err ** 2).mean() / base,
+                         "corr": float(np.corrcoef(pred, te["y"])[0, 1]), "direction": float((np.sign(pred) == np.sign(te["y"])).mean()),
+                         "inside": float((err.abs() <= sd).mean()), "n_train": len(tr), "n_test": len(te)})
+        else:
+            add("1a", LEADERS[t][0], d, list(FIXED_LEADERS), 0.05, crash=True)
     for t, (lbl, *_r) in MARKETS.items():
         add("1", lbl, pd.concat([L, M[t].rename("y")], axis=1).loc["2003-01":].dropna(), list(LEADERS), 0.05, crash=True)
     for t in FOLLOW:
