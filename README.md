@@ -99,6 +99,9 @@ Committing these files also keeps the scheduled job alive: GitHub pauses schedul
 - FRED publishes Brent, USD/INR, US 10Y and VIX a day to a week late, so `build.py` keeps FRED's long history and adds Yahoo's newer days on the end.
 - CPI, jobs, GDP, PMI, the current account and the repo rate are only published monthly or quarterly, so they cannot be fresher than their latest release.
 
+## The Understand the flow tab
+Two views. **Simple story** walks through the chain in plain words (US data → Fed → US yields → dollar → FII flows → rupee → oil and India inflation → RBI → Nifty), each step with today's numbers, a 🟢/🔴/⚪ colour from the same tailwind/headwind rules as the Dashboard, and a button to open its page; it ends with the reverse case and the 2022 example. **Flow chart** is the box-and-arrow diagram of every topic.
+
 ## The Simulator tab
 Three history-based tools (the maths is in `simulator.py`). Each shows its own track record on the page.
 - **Nifty range from India VIX:** the 68% and 95% range the options market is pricing for any number of days ahead. Since 2008, Nifty stayed inside the 1-sigma range about 75% of the time (theory 68%).
