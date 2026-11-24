@@ -54,7 +54,7 @@ Some India data has no clean free download, so you add it by hand in `data/manua
 | Twice a month | RBI "Money Market Operations" release: line I, net durable liquidity | `rbi.csv` · `durable_lakh_cr` · month of the "as on" date (keep the last one in the month) |
 | End of Feb / May / Aug / Nov | India GDP for the quarter (MoSPI) | `rbi.csv` · `gdp_in_yoy` · FIRST month of the quarter (Jul–Sep → `YYYY-07`) |
 | ~2–3 months after quarter end | India current account % of GDP (RBI BoP release) | `rbi.csv` · `cad_pct_gdp` · LAST month of the quarter (Jul–Sep → `YYYY-09`) |
-| As dates are announced | FOMC, RBI, CPI, jobs, budget dates | `events.csv` · `date,event,type` |
+| As dates are announced | FOMC, RBI, CPI, jobs, budget dates | `events.csv` · `date,event,type` (they show on the **Event calendar** tab: highlighted days, click for details) |
 
 ### FII / DII: automatic from December 2026
 Every weekday run saves that day's provisional FII/FPI and DII net figures (NSE's feed, or MSEI's page if NSE blocks the request) to `data/auto/fii_dii_daily.csv`, and `build.py` adds them up by month.
