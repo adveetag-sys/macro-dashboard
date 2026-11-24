@@ -63,7 +63,7 @@ def load_daily(name, spec):
         if len(newer):
             if 8 <= newer.iloc[0] / s.iloc[-1] <= 12:  # Yahoo's ^TNX can quote the yield x10
                 newer = newer / 10
-            if abs(newer.iloc[0] / s.iloc[-1] - 1) <= 0.25:  # same thing on the same scale: safe to join
+            if 0.5 <= newer.iloc[0] / s.iloc[-1] <= 2:  # same scale (VIX can genuinely move 30% in a day): safe to join
                 s = pd.concat([s, newer])
             else:
                 print(f"{name}: {spec['extend']} looks off ({newer.iloc[0]:.2f} vs {s.iloc[-1]:.2f}), not joined")
