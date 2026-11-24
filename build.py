@@ -39,6 +39,86 @@ def auto_flows_monthly() -> pd.DataFrame:
     return pd.DataFrame.from_dict(rows, orient="index")
 
 
+DAILY = {}     # every fetched series at its own frequency (daily, weekly, ...), filled by load_raw_monthly
+UNFILLED = {}  # monthly raw series before slow ones are carried forward, to date each latest value honestly
+
+
+def read_raw(name):
+    path = DATA / "raw" / f"{name}.csv"
+    if not path.exists():
+        return None
+    s = pd.read_csv(path, parse_dates=["date"], index_col="date")["value"].dropna()
+    return s[~s.index.duplicated(keep="last")].sort_index()
+
+
+def load_daily(name, spec):
+    """A fetched series, with a fresher copy's newer days added on the end when config says "extend"
+    (FRED publishes Brent, USD/INR, US 10Y and VIX a day to a week late; Yahoo has them the same day)."""
+    s = read_raw(name)
+    ext = read_raw(spec["extend"]) if spec.get("extend") else None
+    if s is None or s.empty:
+        return ext
+    if ext is not None and not ext.empty:
+        newer = ext[ext.index > s.index.max()]
+        if len(newer):
+            if 8 <= newer.iloc[0] / s.iloc[-1] <= 12:  # Yahoo's ^TNX can quote the yield x10
+                newer = newer / 10
+            if abs(newer.iloc[0] / s.iloc[-1] - 1) <= 0.25:  # same thing on the same scale: safe to join
+                s = pd.concat([s, newer])
+            else:
+                print(f"{name}: {spec['extend']} looks off ({newer.iloc[0]:.2f} vs {s.iloc[-1]:.2f}), not joined")
+    return s
+
+
+def frequency(s):
+    gap = s.index.to_series().diff().dt.days.tail(20).median()
+    return "daily" if gap <= 4 else "weekly" if gap <= 10 else "monthly" if gap <= 45 else "quarterly"
+
+
+def latest_dates(raw, asof_row):
+    """For each indicator's latest value, when that number is really from: the exact day for daily and
+    weekly data, the month for monthly data and anything typed in by hand, the quarter for quarterly data.
+    Slow series are carried forward a few months in the tables, so this looks at the data before that."""
+    import re
+    out = {}
+    for ind in INDICATORS:
+        k, calc = ind["k"], ind["calc"]
+        month = asof_row.get(k, "")
+        if not month:
+            continue
+        end = pd.Period(month, "M").end_time
+        found = []
+        for t in dict.fromkeys(re.findall(r"\br\.(\w+)", calc)):
+            s = DAILY.get(t)
+            if s is not None:
+                s = s[s.index <= end]
+                if s.empty:
+                    continue
+                f = frequency(s)
+                found.append((f, s.index.max()))
+            elif t in UNFILLED:
+                u = UNFILLED[t].dropna()
+                u = u[u.index <= pd.Period(month, "M")]
+                if u.empty:
+                    continue
+                found.append(("monthly", u.index.max().to_timestamp()))
+            else:
+                continue
+            if "combine_first" in calc:  # the first source that has data is the one shown
+                break
+        if not found:
+            continue
+        slow = [x for x in found if x[0] in ("monthly", "quarterly")]
+        f, day = min(slow or found, key=lambda x: x[1])  # only as fresh as its stalest part
+        if f == "quarterly":
+            out[k] = {"label": f"Q{day.quarter} {day.year}", "freq": f, "date": day.strftime("%Y-%m-%d")}
+        elif f == "monthly":
+            out[k] = {"label": day.strftime("%b %Y"), "freq": f, "date": day.strftime("%Y-%m-%d")}
+        else:
+            out[k] = {"label": day.strftime("%d %b %Y").lstrip("0"), "freq": f, "date": day.strftime("%Y-%m-%d")}
+    return out
+
+
 def load_raw_monthly() -> pd.DataFrame:
     months = pd.period_range(START, pd.Timestamp.today(), freq="M")
     out = pd.DataFrame(index=months)
@@ -56,11 +136,11 @@ def load_raw_monthly() -> pd.DataFrame:
             df = manual_cache[path]
             out[name] = df[spec["col"]].reindex(months) if spec["col"] in df else np.nan
             continue
-        path = DATA / "raw" / f"{name}.csv"
-        if not path.exists():
+        s = load_daily(name, spec)
+        if s is None:
             out[name] = np.nan
             continue
-        s = pd.read_csv(path, parse_dates=["date"], index_col="date")["value"]
+        DAILY[name] = s
         monthly = getattr(s.resample("ME"), spec.get("agg", "last"))()
         monthly.index = monthly.index.to_period("M")
         out[name] = monthly.reindex(months)
@@ -69,6 +149,7 @@ def load_raw_monthly() -> pd.DataFrame:
         if col in out and not auto.empty:
             a = auto[col].reindex(months)
             out[col] = a.combine_first(out[col])  # a complete automatic month replaces the manual figure
+    UNFILLED.update({c: out[c].copy() for c in out.columns})
     # quarterly / slow series: carry the last known value forward a few months
     for col in ["gdp_us", "cad_in", "repo", "pmi_us", "pmi_in", "liq", "dliq"]:
         out[col] = out[col].ffill(limit=3)
@@ -132,6 +213,14 @@ def main() -> None:
     vals.to_csv(DATA / "monthly.csv", index_label="month")
     sigs.to_csv(DATA / "signals.csv", index_label="month")
     asof.to_csv(DATA / "asof.csv", index_label="month")
+    latest = latest_dates(raw, asof.iloc[-1].to_dict()) if len(asof) else {}
+    daily_flows = DATA / "auto" / "fii_dii_daily.csv"
+    if daily_flows.exists() and "fii" in latest:  # the newest single day, shown next to the monthly total
+        d = pd.read_csv(daily_flows, parse_dates=["date"]).dropna().sort_values("date")
+        if len(d):
+            x = d.iloc[-1]
+            latest["fii"]["last_day"] = {"label": x["date"].strftime("%d %b").lstrip("0"), "fii": float(x["fii_cr"]), "dii": float(x["dii_cr"])}
+    (DATA / "latest.json").write_text(json.dumps(latest, indent=1))
     missing = [ind["k"] for ind in INDICATORS if vals[ind["k"]].notna().sum() == 0]
     meta = {"built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "first_month": vals.index.min() if len(vals) else None,

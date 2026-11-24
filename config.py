@@ -31,11 +31,11 @@ RAW = {
     "dff":      {"source": "fred", "id": "DFF",             "agg": "last"},  # effective fed funds rate
     "walcl":    {"source": "fred", "id": "WALCL",           "agg": "last"},  # Fed total assets, $ millions (from 2002)
     "wresbal":  {"source": "fred", "id": "WRESBAL",         "agg": "last"},  # reserve balances, $ millions
-    "brent":    {"source": "fred", "id": "DCOILBRENTEU",    "agg": "last"},
-    "us10":     {"source": "fred", "id": "DGS10",           "agg": "last"},
+    "brent":    {"source": "fred", "id": "DCOILBRENTEU",    "agg": "last", "extend": "brent_y"},
+    "us10":     {"source": "fred", "id": "DGS10",           "agg": "last", "extend": "us10_y"},
     "us2":      {"source": "fred", "id": "DGS2",            "agg": "last"},
-    "vix":      {"source": "fred", "id": "VIXCLS",          "agg": "last"},
-    "usdinr":   {"source": "fred", "id": "DEXINUS",         "agg": "last"},  # rupees per dollar, from 1973
+    "vix":      {"source": "fred", "id": "VIXCLS",          "agg": "last", "extend": "vix_y"},
+    "usdinr":   {"source": "fred", "id": "DEXINUS",         "agg": "last", "extend": "inr_y"},  # rupees per dollar, from 1973
     # India series published on FRED by the OECD / IMF (used if no RBI file is supplied)
     "in10":     {"source": "fred", "id": "INDIRLTLT01STM",  "agg": "last"},  # India 10Y govt bond yield (OECD, from Dec 2011)
     "in10_old": {"source": "fred", "id": "INTGSBINM193N",   "agg": "last"},  # India govt bond yield (IMF, to May 2017), fills older years
@@ -55,6 +55,12 @@ RAW = {
     "silver":   {"source": "yahoo", "id": "SI=F",      "agg": "last"},
     "dxy":      {"source": "yahoo", "id": "DX-Y.NYB",  "agg": "last"},
     "invix":    {"source": "yahoo", "id": "^INDIAVIX", "agg": "last"},
+    # Yahoo copies of FRED series that FRED publishes a day to a week late. build.py keeps FRED's long
+    # history and adds Yahoo's newer days on the end ("extend" above), so the latest value is never stale.
+    "brent_y":  {"source": "yahoo", "id": "BZ=F", "agg": "last"},
+    "us10_y":   {"source": "yahoo", "id": "^TNX", "agg": "last"},
+    "vix_y":    {"source": "yahoo", "id": "^VIX", "agg": "last"},
+    "inr_y":    {"source": "yahoo", "id": "INR=X", "agg": "last"},
 
     # Manual CSVs in data/manual/ (see README). Columns: month,<name>
     "repo":     {"source": "manual", "file": "rbi.csv",   "col": "repo"},
@@ -85,7 +91,7 @@ INDICATORS = [
     dict(k="usJobs", label="US payrolls", stage="L", topic="usdata", top=True, sub="Jobs added that month",
          calc="r.payems.diff()", fmt="{:+,.0f}k", rule={"type": "change", "months": 3, "polarity": -1}),
     dict(k="usCpi", label="US CPI", stage="L", topic="usdata", top=True, sub="Year on year",
-         calc="r.cpi_us.pct_change(12) * 100", fmt="{:.1f}%", rule={"type": "level", "good_below": 2.5, "bad_above": 3.5}),
+         calc="r.cpi_us.interpolate(limit_area='inside').pct_change(12, fill_method=None) * 100", fmt="{:.1f}%", rule={"type": "level", "good_below": 2.5, "bad_above": 3.5}),
     dict(k="pmi", label="US manufacturing PMI", stage="L", topic="usdata", top=False, sub="Above 50 = growing",
          calc="r.pmi_us", fmt="{:.1f}", rule={"type": "neutral"}),
     dict(k="gdp", label="US GDP growth", stage="L", topic="usdata", top=False, sub="Quarterly, annualised (q/q)",

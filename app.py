@@ -9,16 +9,18 @@ import streamlit as st
 
 import importlib
 
+import build
 import config
 import events
 import indicator_info
+import live
 import simulator as sim
 import topics
 
 # Streamlit Cloud re-runs app.py after each push but keeps the other .py files it already loaded, so a push
 # that changes them (new indicators, new simulator parts) would mix new and old code. Reloading them on every
 # run (a few milliseconds) means a push never needs an app reboot.
-for _mod in (config, topics, events, indicator_info, sim):
+for _mod in (config, build, topics, events, indicator_info, live, sim):
     importlib.reload(_mod)
 
 from config import INDICATORS, PULSE, STAGES, TRENDS
@@ -78,6 +80,37 @@ if not Path("data/monthly.csv").exists():
 stamp = tuple(Path(f).stat().st_mtime for f in ["data/monthly.csv", "data/signals.csv", "data/meta.json", "data/manual/events.csv"] if Path(f).exists())
 vals, sigs, asof, meta, events = load(stamp)
 months = list(vals.index)
+vals, sigs = vals.copy(), sigs.copy()  # the cached copies stay untouched; live prices go into these
+LATEST = json.loads(Path("data/latest.json").read_text()) if Path("data/latest.json").exists() else {}
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def live_quotes():
+    """Near-live market prices from Yahoo Finance, kept for 5 minutes."""
+    try:
+        return live.fetch()
+    except Exception:
+        return {}
+
+
+LIVE = live_quotes()
+LIVE_AT = max((ts for _, ts in LIVE.values()), default=None)
+if LIVE and months:
+    _last = months[-1]
+    _rules = {i["k"]: i["rule"] for i in INDICATORS}
+    _changed = []
+    for _k, (_v, _ts) in LIVE.items():
+        _old = LATEST.get(_k, {}).get("date")
+        if _k not in vals.columns or (_old and _ts.date() < pd.Timestamp(_old).date()):
+            continue  # never replace a newer daily close with an older quote
+        vals.loc[_last, _k] = _v
+        LATEST[_k] = {"label": _ts.strftime("%d %b, %H:%M IST").lstrip("0"), "freq": "live", "date": _ts.strftime("%Y-%m-%d")}
+        _changed.append(_k)
+    if "us10" in _changed and "in10y" in vals.columns:  # the India-US gap moves with the US 10Y
+        vals.loc[_last, "gap"] = vals.loc[_last, "in10y"] - vals.loc[_last, "us10"]
+        _changed.append("gap")
+    for _k in _changed:  # re-label the latest month with the live value
+        sigs.loc[_last, _k] = build.classify(vals[_k], _rules[_k]).loc[_last]
 
 
 def fmt(k, v):
@@ -97,6 +130,12 @@ def label_month(m):
 
 
 def asof_note(k, month):
+    if months and month == months[-1] and k in LATEST:  # latest month: the exact date (or live time) of the number
+        live_tag = " · live" if LATEST[k]["freq"] == "live" else ""
+        day = LATEST[k].get("last_day")
+        day_tag = (f" (month to date) · {day['label']}: FII {'+' if day['fii'] >= 0 else '−'}₹{abs(day['fii']):,.0f} cr, "
+                   f"DII {'+' if day['dii'] >= 0 else '−'}₹{abs(day['dii']):,.0f} cr") if day else ""
+        return f"as of {LATEST[k]['label']}{live_tag}{day_tag}"
     a = asof.loc[month, k] if k in asof.columns else ""
     return f"as of {label_month(a)}" if a and a != month else ""
 
@@ -202,7 +241,15 @@ ss.setdefault("view", "Dashboard")
 
 top_l, top_r = st.columns([3, 2])
 with top_l:
-    st.markdown(f"<p class='cap'>Data to {label_month(months[-1])} · updated {meta.get('built_at', '?')[:10]}</p>", unsafe_allow_html=True)
+    if LIVE_AT is not None:
+        live_txt = f"Market prices live from Yahoo Finance, last tick {LIVE_AT:%d %b %H:%M} IST (Indian prices about 15 min behind)"
+    else:
+        live_txt = "Live prices unavailable right now, showing the latest daily closes"
+    st.markdown(f"<p class='cap'>{live_txt} · other data: latest release, dated on each card · files updated {meta.get('built_at', '?')[:10]}</p>",
+                unsafe_allow_html=True)
+    if st.button("↻ Refresh prices", help="Prices refresh by themselves every 5 minutes; this fetches them now"):
+        live_quotes.clear()
+        st.rerun()
     st.title(f"Macro Dashboard · {label_month(ss.month)}")
     VIEWS = ["Dashboard", "Understand the flow", "Past events", "Compare to past events", "Simulator"]
     ss.view = st.radio("View", VIEWS, horizontal=True, label_visibility="collapsed",
@@ -579,6 +626,13 @@ else:
     with t1:
         nifty_d, vix_d = sim_daily(stamp)
         spot, vix_now = float(nifty_d.iloc[-1]), float(vix_d.iloc[-1])
+        spot_at, vix_at = f"{nifty_d.index[-1]:%d %b %Y}", f"{vix_d.index[-1]:%d %b}"
+        if "nifty" in LIVE and LIVE["nifty"][1].date() >= nifty_d.index[-1].date():
+            spot, spot_at = LIVE["nifty"][0], f"{LIVE['nifty'][1]:%d %b %H:%M} IST"
+            nifty_d = pd.concat([nifty_d[nifty_d.index.date < LIVE["nifty"][1].date()],
+                                 pd.Series([spot], index=[pd.Timestamp(LIVE["nifty"][1].date())])])
+        if "inVix" in LIVE and LIVE["inVix"][1].date() >= vix_d.index[-1].date():
+            vix_now, vix_at = LIVE["inVix"][0], f"{LIVE['inVix'][1]:%d %b %H:%M}"
         st.markdown("India VIX is the yearly move the options market is pricing in for Nifty. Scaled down to your time window, "
                     "it gives the range Nifty is expected to stay inside: about 68% of the time inside 1 sigma, 95% inside 2 sigma. "
                     "For an option expiry, pick the number of calendar days left to expiry.")
@@ -586,7 +640,7 @@ else:
         rg = sim.vix_range(spot, vix_now, days)
         c1, c2, c3 = st.columns(3)
         with c1.container(border=True):
-            card(f"Nifty · {nifty_d.index[-1]:%d %b %Y}", f"{spot:,.0f}", [f"India VIX {vix_now:.1f} ({vix_d.index[-1]:%d %b})"])
+            card(f"Nifty · {spot_at}", f"{spot:,.0f}", [f"India VIX {vix_now:.1f} ({vix_at})"])
         with c2.container(border=True):
             card(f"68% range · {days} days", f"{rg['lo1']:,.0f} – {rg['hi1']:,.0f}",
                  [f"±{rg['sigma_pct']:.1f}% · about ±{spot * rg['sigma_pct'] / 100:,.0f} points"])

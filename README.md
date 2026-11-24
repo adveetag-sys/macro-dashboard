@@ -92,6 +92,13 @@ If a manual column is empty, India CPI, India 10Y, India GDP and forex reserves 
 
 Committing these files also keeps the scheduled job alive: GitHub pauses schedules in repos with no activity for 60 days.
 
+## How fresh is each number
+- **Market prices are live** while the page is open: Nifty, Bank Nifty, India VIX, USD/INR, S&P 500, Nasdaq 100, VIX, dollar index, US 10Y, Brent, gold and silver come straight from Yahoo Finance and refresh every 5 minutes (Indian prices run about 15 minutes behind). Cards show "· live" and the time. `live.py` does this.
+- **The data files update three times every weekday** (`.github/workflows/update.yml`): 08:47 IST after the US close, 16:17 IST after the Indian close, and 19:47 IST after NSE publishes FII/DII.
+- **Every card on the latest month says when its number is from**: the day for daily and weekly data (Fed funds, Fed balance sheet, bank reserves), the month for monthly releases (CPI, jobs, PMI, India 10Y, your typed-in RBI numbers), the quarter for GDP. `build.py` writes these to `data/latest.json`.
+- FRED publishes Brent, USD/INR, US 10Y and VIX a day to a week late, so `build.py` keeps FRED's long history and adds Yahoo's newer days on the end.
+- CPI, jobs, GDP, PMI, the current account and the repo rate are only published monthly or quarterly, so they cannot be fresher than their latest release.
+
 ## The Simulator tab
 Three history-based tools (the maths is in `simulator.py`). Each shows its own track record on the page.
 - **Nifty range from India VIX:** the 68% and 95% range the options market is pricing for any number of days ahead. Since 2008, Nifty stayed inside the 1-sigma range about 75% of the time (theory 68%).
