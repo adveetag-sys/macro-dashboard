@@ -129,6 +129,32 @@ def label_month(m):
     return f"{MONTHS[int(mm) - 1]} {y}"
 
 
+LIVE_FREQ = "live while the page is open (daily history)"
+FREQ = {  # how often each indicator's own data really updates (the topic's freq covers several indicators)
+    "usJobs": "monthly", "usCpi": "monthly", "pmi": "monthly", "gdp": "quarterly",
+    "fed": "daily (the rate itself changes at the 8 Fed meetings a year)", "fedBs": "weekly", "usRes": "weekly",
+    "in10y": "monthly", "gap": "US side live, India side monthly", "fii": "daily, shown as the month's total",
+    "rbi": "at RBI policy meetings, about 6 a year", "inCpi": "monthly", "fx": "weekly, shown monthly",
+    "inLiq": "daily, typed in monthly", "inDur": "fortnightly", "inGdp": "quarterly", "cad": "quarterly",
+}
+
+
+def freq_of(k):
+    return LIVE_FREQ if k in live.TICKERS else FREQ.get(k, TOPICS[IND[k]["topic"]]["freq"])
+
+
+def short_asof(k, month):
+    """Compact 'when' tag for small spaces like the flow chart: live, 24 Nov, Oct, Q3."""
+    if not (months and month == months[-1] and k in LATEST):
+        return ""
+    x = LATEST[k]
+    if x["freq"] == "live":
+        return "live"
+    if x["freq"] in ("daily", "weekly"):
+        return pd.Timestamp(x["date"]).strftime("%d %b").lstrip("0")
+    return x["label"].split(" ")[0]
+
+
 def asof_note(k, month):
     if months and month == months[-1] and k in LATEST:  # latest month: the exact date (or live time) of the number
         live_tag = " · live" if LATEST[k]["freq"] == "live" else ""
@@ -276,7 +302,7 @@ def detail_page(k):
     a, b = st.columns([3, 2])
     a.markdown(f"<p class='cap' style='color:{STAGE_COLOR[ind['stage']]}'>{STAGES[ind['stage']][1]}</p>", unsafe_allow_html=True)
     a.header(ind["label"])
-    a.caption(f"{ind['sub']} · updates {t['freq']}" + (f" · latest reading {asof_note(k, m)}" if asof_note(k, m) else ""))
+    a.caption(f"{ind['sub']} · updates {freq_of(k)}" + (f" · latest reading {asof_note(k, m)}" if asof_note(k, m) else ""))
     b.markdown(f"<p class='cap'>On {label_month(m)}</p><div class='big'>{fmt(k, row_v[k])}</div>{pill(row_s[k])} for India",
                unsafe_allow_html=True)
     info = INFO.get(k, {})
@@ -285,7 +311,8 @@ def detail_page(k):
         st.markdown("<p class='cap'>What it is</p>", unsafe_allow_html=True)
         st.write(info.get("what", t["what"]))
         st.markdown("<p class='cap'>Where it comes from</p>", unsafe_allow_html=True)
-        st.write(info.get("source", ""))
+        st.write(info.get("source", "") + (f" While the page is open, the latest value comes live from Yahoo Finance ({live.TICKERS[k]}), "
+                                           "refreshed every 5 minutes." if k in live.TICKERS else ""))
     with c[1].container(border=True):
         st.markdown("<p class='cap'>How to read it</p>", unsafe_allow_html=True)
         st.write(info.get("read", t["how"]))
@@ -456,7 +483,7 @@ elif ss.view == "Understand the flow":
         codes = {row_s[k] for k in ks if row_s[k]}
         code = "H" if codes == {"H"} or ("H" in codes and "T" not in codes) else ("T" if "T" in codes and "H" not in codes else "N")
         stage = IND[ks[0]]["stage"]
-        body = "\\n".join(f"{IND[k]['label']}: {fmt(k, row_v[k])}" for k in ks)
+        body = "\\n".join(f"{IND[k]['label']}: {fmt(k, row_v[k])}" + (f" ({short_asof(k, m)})" if short_asof(k, m) else "") for k in ks)
         lines.append(f'{tp} [label="{TOPICS[tp]["name"]}\\n{body}\\n{SIG_TEXT[code]}", color="{STAGE_COLOR[stage]}", fillcolor="{fill[code]}"];')
     for tp in order:
         for ch in TOPICS[tp]["children"]:

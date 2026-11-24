@@ -21,7 +21,7 @@ INFO = {
     "usCpi": dict(
         what="How much prices of everyday goods and services in the US rose compared with a year ago (Consumer Price Index, year on year). "
              "It is the main inflation number the Fed fights.",
-        source="US Bureau of Labor Statistics, around the 10th–15th of the next month.",
+        source="US Bureau of Labor Statistics, around the 10th–15th of the next month. October 2025 was never published (US government shutdown), so that one month is filled in from the months either side; it is only used to work out the yearly rate for October 2026.",
         read="The Fed aims for about 2%. Up to 2.5% is comfortable. 3–4% means the Fed stays cautious. Above 4% means the Fed is likely to hike. "
              "It peaked near 9% in mid-2022.",
         path="Hot CPI → Fed holds or hikes → US yields and dollar rise → FII outflows from India → weaker rupee → "
@@ -65,7 +65,7 @@ INFO = {
     ),
     "brent": dict(
         what="The global benchmark price of crude oil, in US dollars per barrel.",
-        source="Daily market price (FRED series DCOILBRENTEU, from the US EIA).",
+        source="Daily market price (FRED series DCOILBRENTEU, from the US EIA). FRED posts it about a week late, so the newest days come from Brent futures on Yahoo (BZ=F).",
         read="Around $60–80 is comfortable for India. Above $90 starts to hurt. Above $110 is a serious shock. India imports about 85% of its oil.",
         path="Oil up → India's import bill rises → current account deficit widens → more dollars needed → rupee weakens → "
              "fuel and transport costs feed into India CPI → RBI less able to cut → pressure on Nifty, especially oil-using sectors.",
@@ -74,7 +74,7 @@ INFO = {
     "us10": dict(
         what="The yield (interest rate) on 10-year US government bonds. It is the world's main 'risk-free' long-term rate, "
              "and it reflects where markets think the Fed and inflation are heading.",
-        source="US Treasury market, daily (FRED series DGS10).",
+        source="US Treasury market, daily (FRED series DGS10). The newest days, before FRED posts them, come from Yahoo (^TNX).",
         read="Below 2% = very easy money. 3–4% is normal for today. Above 4.5% starts to pull money away from riskier assets. Speed matters: a 1% jump in a few months is a shock.",
         path="Higher US 10Y → safe US bonds look more attractive → the India–US gap narrows → FIIs sell Indian bonds and stocks → "
              "rupee weakens → Indian bond yields rise too → banks and rate-sensitive stocks fall.",
@@ -91,7 +91,7 @@ INFO = {
     ),
     "gap": dict(
         what="Indian 10-year government bond yield minus the US 10-year yield. It shows how much extra return a foreign investor gets for holding Indian bonds.",
-        source="Calculated here: India 10Y (OECD and IMF series on FRED) minus US 10Y (FRED).",
+        source="Calculated here: India 10Y (OECD and IMF series on FRED, monthly) minus US 10Y (FRED, topped up from Yahoo, and live while the page is open). So the latest gap uses the current US 10Y against the latest monthly India 10Y.",
         read="Historically about 4–7 points. Below about 3 points makes India less attractive for foreign bond money, especially once you count the risk of the rupee falling.",
         path="Wider gap → foreign bond money comes in → rupee supported → lower borrowing costs. Narrow gap → foreign money leaves → rupee weakens.",
         watch="The gap shrinking quickly because US yields are rising, as in 2013 and 2022.",
@@ -114,7 +114,7 @@ INFO = {
     "fii": dict(
         what="Net buying or selling of Indian shares by foreign institutional investors (also called FPIs) in the cash market during the month.",
         source="From Dec 2026: collected automatically every weekday from NSE (MSEI as backup) and summed by month. 2014 to Nov 2026: NSE provisional daily data summed by month (via tapetide.com). 2000–2013: SEBI's monthly net FII equity investment (via equitymaster.com), "
-               "which is measured slightly differently. Filled in data/manual/flows.csv.",
+               "which is measured slightly differently. Filled in data/manual/flows.csv. The card also shows the latest single day from the automatic daily record.",
         read="Positive = foreigners are buying, negative = selling. ₹±10,000 crore in a month is a normal swing. Selling above ₹40,000 crore in a month is heavy. "
              "October 2024 and March 2026 saw selling of more than ₹1 lakh crore.",
         path="FII selling → they convert rupees to dollars → rupee weakens → index heavyweights (banks, large caps) fall. "
@@ -123,7 +123,7 @@ INFO = {
     ),
     "inr": dict(
         what="How many rupees one US dollar buys. A higher number means a weaker rupee.",
-        source="Daily reference rate (FRED series DEXINUS, from the Federal Reserve). The RBI also publishes its own reference rate.",
+        source="Daily reference rate (FRED series DEXINUS, from the Federal Reserve). FRED posts it a few days late, so the newest days come from Yahoo (INR=X). The RBI also publishes its own reference rate.",
         read="Over the long run the rupee weakens about 2–4% a year, roughly the inflation gap with the US. A fall of more than 5% in three months is a shock. "
              "It moved from about 40 in early 2008 to above 90 in 2026.",
         path="Weaker rupee → imports (oil, electronics) cost more → India's inflation rises → RBI cannot cut, or must hike. "
@@ -245,7 +245,7 @@ INFO = {
     ),
     "vix": dict(
         what="The 'fear gauge': how much movement options traders expect in the S&P 500 over the next 30 days.",
-        source="Cboe, daily (FRED series VIXCLS).",
+        source="Cboe, daily (FRED series VIXCLS). The newest days, before FRED posts them, come from Yahoo (^VIX).",
         read="Below 15 = calm. 15–25 = normal worry. Above 30 = fear. Above 40 = panic. It hit about 80 in 2008 and 2020.",
         path="High VIX → investors cut risk worldwide → FII selling in India → higher India VIX and a falling Nifty.",
         watch="Sudden jumps above 30, and how fast it falls back.",
