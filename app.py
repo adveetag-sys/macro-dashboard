@@ -278,13 +278,8 @@ with top_l:
         st.rerun()
     st.title(f"Macro Dashboard · {label_month(ss.month)}")
     VIEWS = ["Dashboard", "Understand the flow", "Past events", "Compare to past events", "Simulator"]
-    # The menu follows ss.view (so any "open" button or dropdown can switch tabs), and a click on the menu sets ss.view.
-    ss["view_radio"] = ss.view if ss.view in VIEWS else VIEWS[0]
-
-    def _menu_clicked():  # picking a tab also closes any open indicator page
-        ss.view, ss.open = ss["view_radio"], None
-
-    ss.view = st.radio("View", VIEWS, horizontal=True, label_visibility="collapsed", key="view_radio", on_change=_menu_clicked)
+    ss.view = st.radio("View", VIEWS, horizontal=True, label_visibility="collapsed",
+                       index=VIEWS.index(ss.view) if ss.view in VIEWS else 0)
 with top_r:
     years = sorted({m[:4] for m in months}, reverse=True)
     c1, c2 = st.columns(2)
@@ -477,117 +472,28 @@ if ss.view == "Dashboard":
 
 # ---------- flow view ----------
 elif ss.view == "Understand the flow":
-    mode = st.radio("Show", ["Simple story", "Flow chart"], horizontal=True, label_visibility="collapsed", key="flow_mode")
-
-    if mode == "Simple story":
-        st.subheader("🌍 How America's economy moves India's markets")
-        st.markdown("Money around the world goes where it earns the most, at the lowest risk. America is the biggest economy, "
-                    "so when its numbers change, money moves, and India feels it. Here is the chain, with **today's numbers**. "
-                    "Colours: 🟢 helping India's markets right now · 🔴 hurting them · ⚪ neutral.")
-        STORY = [  # title, indicators shown, the explanation, what today's colour means (helping / hurting / neutral)
-            ("🇺🇸 US data: is America's economy too hot or too cold?", ["usJobs", "usCpi", "gdp"],
-             "Every month the US reports jobs, inflation (how fast prices rise) and growth.\n"
-             "- **Too hot:** lots of jobs, prices rising fast → the Fed will want to cool it down.\n"
-             "- **Too cold:** job losses, weak growth → the Fed will want to warm it up.",
-             ("America's numbers are cooling, so the Fed can relax.", "America's numbers are running hot, so the Fed may stay tough.",
-              "America's numbers are steady: no big push either way.")),
-            ("🏦 The Fed: America's central bank", ["fed", "fedBs"],
-             "The Fed sets the **interest rate**, the price of borrowing money.\n"
-             "- **Raising rates** makes loans costlier, so people spend less and prices calm down.\n"
-             "- **Cutting rates** makes loans cheap, so people spend more and the economy picks up.",
-             ("The Fed is easing: good news for money flowing to India.", "The Fed is tight: money stays in America.",
-              "The Fed is holding steady.")),
-            ("📈 US bond yields: what America pays lenders", ["us10", "gap"],
-             "When the Fed raises rates, US government bonds pay more interest (the **10-year yield** goes up). "
-             "A safe 5% in America becomes very attractive, so India has to offer more to keep investors.",
-             ("US yields are falling, so India looks more attractive by comparison.", "US yields are rising: a safe US return pulls money away from India.",
-              "US yields are steady.")),
-            ("💵 The dollar", ["dxy"],
-             "Investors worldwide buy dollars to get higher US returns, so the **dollar gets stronger**.",
-             ("The dollar is weakening: money is free to flow into places like India.", "The dollar is strong: it pulls money out of India.",
-              "The dollar is steady.")),
-            ("✈️ FII flows: foreign money in Indian stocks", ["fii"],
-             "Foreign investors (FIIs) compare: *\"India might give me 12%, but it's riskier. America now gives 5% almost risk-free.\"* "
-             "When US returns rise, many **sell Indian shares and take money home**. "
-             "**DIIs** (Indian funds, like your parents' SIPs) often buy when FIIs sell, which cushions the fall.",
-             ("Foreign investors are buying Indian shares.", "Foreign investors are selling Indian shares.", "Foreign investors are mostly sitting still.")),
-            ("🇮🇳 The rupee", ["inr"],
-             "To take money out, FIIs sell rupees and buy dollars, so the **rupee weakens** (e.g. ₹88 → ₹93 per dollar). "
-             "India imports most of its **oil**, and oil is paid for in dollars, so a weak rupee makes oil costlier.",
-             ("The rupee is getting stronger.", "The rupee is getting weaker: imports like oil cost more.", "The rupee is steady.")),
-            ("🛢️ Oil and Indian inflation", ["brent", "inCpi"],
-             "Costlier oil raises petrol, transport and food prices, so **India's inflation goes up**.",
-             ("Oil and prices in India are calm.", "Oil or India's prices are running hot.", "Oil and prices are in a normal range.")),
-            ("🏛️ The RBI: India's central bank", ["rbi", "inLiq"],
-             "The RBI faces a choice:\n"
-             "- **Raise rates** to fight inflation and keep foreign money from leaving, but that slows growth.\n"
-             "- **Keep rates low** to help growth, but risk more inflation and a weaker rupee.",
-             ("The RBI is easing and banks have spare cash: good for growth and shares.", "The RBI is tight or banks are short of cash.",
-              "The RBI is holding steady.")),
-            ("📉 The Nifty: India's stock market", ["nifty", "bank", "inVix"],
-             "Put it together: foreign selling, costlier oil, higher rates and slower company profits mean the **Nifty usually falls**, "
-             "and **Bank Nifty** feels the rate moves the most. **India VIX** (the fear gauge) rises when traders expect big swings.",
-             ("Indian shares are in an uptrend.", "Indian shares are under pressure.", "Indian shares are moving sideways.")),
-        ]
-        DOT = {"T": "🟢", "H": "🔴", "N": "⚪", "": "⚪"}
-
-        def go_to(k):  # runs before the page redraws, so the top menu switches to the Dashboard with this indicator open
-            ss.open, ss.view = k, "Dashboard"
-        for n, (title, keys, text, meaning) in enumerate(STORY, start=1):
-            keys = [k for k in keys if k in IND and vals[k].notna().any()]
-            codes = {row_s[k] for k in keys if row_s[k]}
-            code = "H" if "H" in codes and "T" not in codes else ("T" if "T" in codes and "H" not in codes else "N")
-            with st.container(border=True):
-                left, right = st.columns([3, 2])
-                with left:
-                    st.markdown(f"#### {n}. {title}")
-                    st.markdown(text)
-                with right:
-                    st.markdown(f"<p class='cap'>Right now</p><div style='font-size:15px'>{DOT[code]} <b>{meaning[{'T': 0, 'H': 1}.get(code, 2)]}</b></div>",
-                                unsafe_allow_html=True)
-                    for k in keys:
-                        when = short_asof(k, m)
-                        st.markdown(f"{DOT[row_s[k]]} {IND[k]['label']}: **{fmt(k, row_v[k])}**" + (f" <span class='muted'>({when})</span>" if when else ""),
-                                    unsafe_allow_html=True)
-                    st.button(f"Open {IND[keys[0]]['label']} →", key=f"story-{n}", on_click=go_to, args=(keys[0],))
-            if n < len(STORY):
-                st.markdown("<div style='text-align:center;font-size:22px;color:#5B6886'>⬇</div>", unsafe_allow_html=True)
-
-        with st.container(border=True):
-            st.markdown("#### 🔄 It works the other way too")
-            st.markdown("If the Fed cuts rates, US yields fall, the dollar weakens, foreign money comes back to India, "
-                        "the rupee strengthens and the Nifty usually rises.")
-        with st.container(border=True):
-            st.markdown("#### 📅 A real example: 2022")
-            st.markdown("The US had 9% inflation, so the Fed raised rates from 0% to over 4% in a year. The dollar soared, FIIs pulled about "
-                        "₹1.2 lakh crore out of India, the rupee fell from ₹74 to ₹83, and the RBI had to raise rates too. "
-                        "The Nifty dropped about 15% from its peak. That's the whole chain, playing out in real life. "
-                        "See it month by month in the **Past events** tab.")
-        st.caption("Colours use the same tailwind / headwind rules as the Dashboard, for the month picked at the top.")
-
-    else:
-        st.caption("Change flows from the top down. Pick a box below the chart to open its page.")
-        order = ["usdata", "brent", "fed", "incpi", "yields", "dollar", "metals", "usstocks", "fii", "inr", "rbi", "nifty", "vix"]
-        fill = {"T": "#0F3B2A", "H": "#46161B", "N": "#1C212C", "": "#1C212C"}
-        lines = ['digraph G {', 'rankdir=TB; bgcolor="transparent"; nodesep=0.4; ranksep=0.5;',
-                 'node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, fontcolor="#F3F4F6", penwidth=2];',
-                 'edge [color="#5B6886", arrowsize=0.7];']
-        for tp in order:
-            ks = [i["k"] for i in INDICATORS if i["topic"] == tp and vals[i["k"]].notna().any()]
-            codes = {row_s[k] for k in ks if row_s[k]}
-            code = "H" if codes == {"H"} or ("H" in codes and "T" not in codes) else ("T" if "T" in codes and "H" not in codes else "N")
-            stage = IND[ks[0]]["stage"]
-            body = "\\n".join(f"{IND[k]['label']}: {fmt(k, row_v[k])}" + (f" ({short_asof(k, m)})" if short_asof(k, m) else "") for k in ks)
-            lines.append(f'{tp} [label="{TOPICS[tp]["name"]}\\n{body}\\n{SIG_TEXT[code]}", color="{STAGE_COLOR[stage]}", fillcolor="{fill[code]}"];')
-        for tp in order:
-            for ch in TOPICS[tp]["children"]:
-                lines.append(f"{tp} -> {ch};")
-        lines.append("}")
-        st.graphviz_chart("\n".join(lines), width="stretch")
-        pick = st.selectbox("Open a topic", order, format_func=lambda tp: TOPICS[tp]["name"], index=None, placeholder="Choose a box…")
-        if pick:
-            ss.open, ss.view = first_of_topic(pick), "Dashboard"
-            st.rerun()
+    st.caption("Change flows from the top down. Pick a box below the chart to open its page.")
+    order = ["usdata", "brent", "fed", "incpi", "yields", "dollar", "metals", "usstocks", "fii", "inr", "rbi", "nifty", "vix"]
+    fill = {"T": "#0F3B2A", "H": "#46161B", "N": "#1C212C", "": "#1C212C"}
+    lines = ['digraph G {', 'rankdir=TB; bgcolor="transparent"; nodesep=0.4; ranksep=0.5;',
+             'node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, fontcolor="#F3F4F6", penwidth=2];',
+             'edge [color="#5B6886", arrowsize=0.7];']
+    for tp in order:
+        ks = [i["k"] for i in INDICATORS if i["topic"] == tp and vals[i["k"]].notna().any()]
+        codes = {row_s[k] for k in ks if row_s[k]}
+        code = "H" if codes == {"H"} or ("H" in codes and "T" not in codes) else ("T" if "T" in codes and "H" not in codes else "N")
+        stage = IND[ks[0]]["stage"]
+        body = "\\n".join(f"{IND[k]['label']}: {fmt(k, row_v[k])}" + (f" ({short_asof(k, m)})" if short_asof(k, m) else "") for k in ks)
+        lines.append(f'{tp} [label="{TOPICS[tp]["name"]}\\n{body}\\n{SIG_TEXT[code]}", color="{STAGE_COLOR[stage]}", fillcolor="{fill[code]}"];')
+    for tp in order:
+        for ch in TOPICS[tp]["children"]:
+            lines.append(f"{tp} -> {ch};")
+    lines.append("}")
+    st.graphviz_chart("\n".join(lines), width="stretch")
+    pick = st.selectbox("Open a topic", order, format_func=lambda tp: TOPICS[tp]["name"], index=None, placeholder="Choose a box…")
+    if pick:
+        ss.open, ss.view = first_of_topic(pick), "Dashboard"
+        st.rerun()
 
 
 # ---------- past events ----------
