@@ -40,18 +40,6 @@ EVENT_IMPACT = {
     "budget": ("Budget", "Sets government borrowing (bond supply, so India 10Y), taxes and spending. Usually a high-volatility day."),
 }
 
-EVENT_MOVES = {  # indicators each kind of event moves most (shown on the calendar, each opens its page)
-    "fomc": ["fed", "us10", "dxy", "fii", "inr"],
-    "rbi": ["rbi", "in10y", "bank", "inr", "inLiq"],
-    "us_jobs": ["usJobs", "us10", "dxy", "sp"],
-    "us_cpi": ["usCpi", "us10", "dxy", "fii"],
-    "in_cpi": ["inCpi", "rbi", "in10y", "bank"],
-    "in_gdp": ["inGdp", "nifty", "fii"],
-    "pmi": ["pmi", "gdp", "nifty"],
-    "tax": ["inLiq", "inDur", "bank"],
-    "budget": ["in10y", "nifty", "bank", "inr"],
-}
-
 st.set_page_config(page_title="Macro Dashboard · USA → India", layout="wide")
 
 IND = {i["k"]: i for i in INDICATORS}
@@ -289,7 +277,7 @@ with top_l:
         live_quotes.clear()
         st.rerun()
     st.title(f"Macro Dashboard · {label_month(ss.month)}")
-    VIEWS = ["Dashboard", "Understand the flow", "Event calendar", "Past events", "Compare to past events", "Simulator"]
+    VIEWS = ["Dashboard", "Understand the flow", "Past events", "Compare to past events", "Simulator"]
     ss.view = st.radio("View", VIEWS, horizontal=True, label_visibility="collapsed",
                        index=VIEWS.index(ss.view) if ss.view in VIEWS else 0)
 with top_r:
@@ -476,18 +464,11 @@ if ss.view == "Dashboard":
         nxt = events[events["date"] >= start].sort_values("date").head(8)
         if nxt.empty:
             st.caption("Add dates to data/manual/events.csv to list them here.")
-        st.caption("Click an event to open it on the calendar.")
-        for i, (_, e) in enumerate(nxt.iterrows()):
+        for _, e in nxt.iterrows():
             tag, note = EVENT_IMPACT.get(str(e.get("type", "")).strip(), ("", ""))
-            if st.button(f"**{e['date']:%d %b %Y}** · {e['event']}", key=f"up-{i}", width="stretch"):
-                d = e["date"].normalize()
-                ss.cal_day, ss.cal_month, ss.view = d, pd.Period(d, "M"), "Event calendar"
-                st.rerun()
-            if note:
-                st.markdown(f"<span class='muted' style='font-size:12px'><b>{tag}:</b> {note}</span>", unsafe_allow_html=True)
-        if st.button("Open the full calendar →", type="primary"):
-            ss.view = "Event calendar"
-            st.rerun()
+            st.markdown(f"**{e['date']:%d %b %Y}** · {e['event']}"
+                        + (f"<br><span class='muted' style='font-size:12px'><b>{tag}:</b> {note}</span>" if note else ""),
+                        unsafe_allow_html=True)
 
 # ---------- flow view ----------
 elif ss.view == "Understand the flow":
@@ -514,89 +495,6 @@ elif ss.view == "Understand the flow":
         ss.open, ss.view = first_of_topic(pick), "Dashboard"
         st.rerun()
 
-
-# ---------- event calendar ----------
-elif ss.view == "Event calendar":
-    import calendar as _cal
-    st.subheader("Event calendar")
-    st.caption("Highlighted days have a scheduled release or decision. Click one for what it is and how it can move markets. "
-               "Dates come from data/manual/events.csv; '(expected)' means the usual date, not yet confirmed.")
-    today = pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize()
-    ev = events.dropna(subset=["date"]).copy()
-    ev["day"] = ev["date"].dt.normalize()
-    by_day = {d: g for d, g in ev.groupby("day")}
-    upcoming = sorted(d for d in by_day if d >= today)
-    ss.setdefault("cal_day", upcoming[0] if upcoming else today)
-    ss.setdefault("cal_month", pd.Period(ss.cal_day, "M"))
-
-    n1, n2, n3, n4 = st.columns([1, 1, 3, 1])
-    if n1.button("← Previous month"):
-        ss.cal_month -= 1
-        st.rerun()
-    if n2.button("Next month →"):
-        ss.cal_month += 1
-        st.rerun()
-    if n4.button("Today"):
-        ss.cal_month = pd.Period(today, "M")
-        ss.cal_day = upcoming[0] if upcoming else today
-        st.rerun()
-    n3.markdown(f"<h3 style='text-align:center;margin:0'>{ss.cal_month.strftime('%B %Y')}</h3>", unsafe_allow_html=True)
-
-    tags = {k: v[0] for k, v in EVENT_IMPACT.items()}
-    head = st.columns(7)
-    for c, dname in zip(head, ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]):
-        c.markdown(f"<p class='cap' style='text-align:center'>{dname}</p>", unsafe_allow_html=True)
-    for week in _cal.Calendar(firstweekday=0).monthdatescalendar(ss.cal_month.year, ss.cal_month.month):
-        cols = st.columns(7)
-        for c, d in zip(cols, week):
-            d = pd.Timestamp(d)
-            if d.month != ss.cal_month.month:
-                c.write("")
-                continue
-            mark = " · today" if d == today else ""
-            if d in by_day:
-                g = by_day[d]
-                short = " + ".join(dict.fromkeys(tags.get(str(t).strip(), "Event") for t in g["type"].fillna("")))
-                if c.button(f"**{d.day}**{mark}  \n{short}", key=f"cal-{d:%Y%m%d}", width="stretch",
-                            type="primary" if d == ss.cal_day else "secondary"):
-                    ss.cal_day = d
-                    st.rerun()
-            else:
-                style = "color:#60A5FA;font-weight:700" if d == today else ("color:#4B5563" if d < today else "color:#A3ADBF")
-                c.markdown(f"<div style='text-align:center;padding:10px 0;{style}'>{d.day}{mark}</div>", unsafe_allow_html=True)
-    st.caption("Highlighted button = has events · filled button = the day you picked · blue number = today.")
-
-    sel = ss.cal_day
-    st.divider()
-    if sel in by_day:
-        days = (sel - today).days
-        when = "today" if days == 0 else f"in {days} day{'s' if days != 1 else ''}" if days > 0 else f"{-days} day{'s' if days != -1 else ''} ago"
-        st.subheader(f"{sel:%A %d %B %Y} · {when}")
-        for i, (_, e) in enumerate(by_day[sel].iterrows()):
-            typ = str(e.get("type", "")).strip()
-            tag, note = EVENT_IMPACT.get(typ, ("", ""))
-            with st.container(border=True):
-                st.markdown(f"**{e['event']}**" + (f"  <span class='muted'>· {tag}</span>" if tag else ""), unsafe_allow_html=True)
-                if note:
-                    st.markdown(f"**How it can move markets:** {note}")
-                keys = [k for k in EVENT_MOVES.get(typ, []) if k in IND]
-                if keys:
-                    st.markdown("<p class='cap'>What it moves · latest readings (click to open)</p>", unsafe_allow_html=True)
-                    cols = st.columns(len(keys))
-                    for c, k in zip(cols, keys):
-                        v = vals[k].dropna()
-                        txt = fmt(k, v.iloc[-1]) if len(v) else "—"
-                        if c.button(f"{IND[k]['label']}  \n{txt}", key=f"calk-{sel:%Y%m%d}-{i}-{k}", width="stretch"):
-                            ss.open, ss.view = k, "Dashboard"
-                            st.rerun()
-    else:
-        st.caption("Click a highlighted day to see its events.")
-
-    nxt = [d for d in upcoming if d > sel][:1]
-    if nxt:
-        if st.button(f"Next event day: {nxt[0]:%a %d %b} →"):
-            ss.cal_day, ss.cal_month = nxt[0], pd.Period(nxt[0], "M")
-            st.rerun()
 
 # ---------- past events ----------
 elif ss.view == "Past events":
