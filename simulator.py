@@ -143,13 +143,24 @@ MARKETS = {  # key: (label, how measured, unit, slider min, max, step)
     "dxy":  ("Dollar index (DXY)", "pct", "%", -10.0, 10.0, 0.1),
     "sp":   ("S&P 500 (global mood)", "pct", "%", -30.0, 30.0, 0.5),
 }
+FOLLOW_MARKETS = ("us10",)  # markets that follow the leaders: only the US 10Y link held up on unseen years (see validate)
 DRIVERS = {**MARKETS, "brent": ("Brent oil", "pct", "%", -50.0, 50.0, 1.0)}  # US markets + oil
 INDIA = {  # step-3 sliders: key: (label, how measured, unit, slider min, max, step, help)
+    "rbi":   ("RBI repo rate", "diff", "pts", -1.5, 1.5, 0.25, "+0.25 = one hike; your call, it does not follow the other sliders"),
     "inr":   ("USD/INR", "pct", "%", -10.0, 10.0, 0.1, "+ = rupee weaker"),
     "inCpi": ("India CPI inflation", "diff", "pts", -3.0, 3.0, 0.05, "change in the yearly inflation rate"),
-    "rbi":   ("RBI repo rate", "diff", "pts", -1.5, 1.5, 0.25, "+0.25 = one hike; your call, it does not follow the other sliders"),
 }
-FOLLOW = ("inr", "inCpi")  # India sliders that move with the US markets; the repo is left to you
+FOLLOW = ("inr", "inCpi")  # India sliders that move with the US markets and the repo; the repo itself is left to you
+# Which inputs each result uses. India 10Y keeps only its real drivers: with every input it did worse than a
+# plain average on years it had not seen. Nifty and FII flows use them all (with shrinkage, see _fit).
+RESULT_INPUTS = {
+    "nifty": list(DRIVERS) + list(INDIA),
+    "fii":   list(DRIVERS) + list(INDIA),
+    "in10y": ["us10", "rbi", "inCpi"],
+}
+STEP2_INPUTS = list(DRIVERS) + ["rbi"]
+SHRINK = 0.5        # ridge strength for steps 2 and 3 (chosen by testing on unseen years, see validate)
+TRAIN_END = "2016-12"  # validate: learn up to here, test on the years after
 TARGETS = {  # final results: key: (label, how measured, unit, note)
     "nifty": ("Nifty", "pct", "%", ""),
     "fii":   ("FII flows", "sum", "₹ cr", "total over the 3 months"),
@@ -202,29 +213,78 @@ def fit_leaders(vals, start="2003-01"):
     return models, L
 
 
-def _ols(d, cols):
-    A = np.column_stack([np.ones(len(d)), d[cols].values])
-    coef, *_ = np.linalg.lstsq(A, d["y"].values, rcond=None)
-    resid = d["y"].values - A @ coef
-    return {"const": coef[0], "beta": dict(zip(cols, coef[1:])), "resid_sd": resid.std(ddof=len(coef)),
-            "r2": 1 - resid.var() / d["y"].var(), "n": len(d), "since": d.index[0]}
+def _fit(d, cols, lam=SHRINK):
+    """Least squares with shrinkage (ridge regression) on inputs scaled to the same size. Plain least squares
+    with 7 overlapping inputs gave effects that flipped sign between 2005-16 and 2017-26 and predicted unseen
+    years worse than a plain average; shrinking pulls unstable effects toward zero and fixed that."""
+    X, y = d[cols], d["y"]
+    mu, sd = X.mean(), X.std()
+    A = ((X - mu) / sd).values
+    b = np.linalg.solve(A.T @ A + lam * len(A) * np.eye(len(cols)), A.T @ (y.values - y.mean()))
+    beta = b / sd.values
+    const = y.mean() - float((mu.values * beta).sum())
+    resid = y.values - const - X.values @ beta
+    return {"const": const, "beta": dict(zip(cols, beta)), "resid_sd": resid.std(ddof=len(cols) + 1),
+            "r2": 1 - resid.var() / y.var(), "n": len(d), "since": d.index[0]}
+
+
+def _frame(vals, start="2005-01"):
+    X = pd.concat([three_month_moves(vals, DRIVERS), three_month_moves(vals, INDIA)], axis=1)
+    Y = three_month_moves(vals, TARGETS)
+    return X.loc[start:], Y.loc[start:]
 
 
 def fit_india(vals, start="2005-01"):
-    """Step 2: how the rupee and India CPI have moved with the US markets and oil (3-month moves, same window)."""
-    X = three_month_moves(vals, DRIVERS)
-    Y = three_month_moves(vals, {k: INDIA[k] for k in FOLLOW})
-    return {t: _ols(pd.concat([X, Y[t].rename("y")], axis=1).loc[start:].dropna(), list(DRIVERS)) for t in FOLLOW}
+    """Step 2: how the rupee and India CPI have moved with the US markets, oil and the repo rate
+    (3-month moves over the same window)."""
+    X, _ = _frame(vals, start)
+    return {t: _fit(pd.concat([X[STEP2_INPUTS], X[t].rename("y")], axis=1).dropna(), STEP2_INPUTS) for t in FOLLOW}
 
 
 def fit_what_if(vals, start="2005-01"):
-    """Step 3: Nifty, FII flows and India 10Y on the US markets, oil, the rupee, India CPI and the repo rate,
-    all as 3-month moves over the same window, every month since `start`."""
-    X = pd.concat([three_month_moves(vals, DRIVERS), three_month_moves(vals, INDIA)], axis=1)
-    Y = three_month_moves(vals, TARGETS)
-    cols = list(DRIVERS) + list(INDIA)
-    models = {t: _ols(pd.concat([X, Y[t].rename("y")], axis=1).loc[start:].dropna(), cols) for t in TARGETS}
+    """Step 3: Nifty, FII flows and India 10Y on the inputs in RESULT_INPUTS, all as 3-month moves
+    over the same window, every month since `start`."""
+    X, Y = _frame(vals, start)
+    models = {t: _fit(pd.concat([X[RESULT_INPUTS[t]], Y[t].rename("y")], axis=1).dropna(), RESULT_INPUTS[t]) for t in TARGETS}
     return models, X
+
+
+def _score(train, test, cols, lam):
+    m = _fit(train, cols, lam) if lam is not None else None
+    pred = m["const"] + sum(m["beta"][k] * test[k] for k in cols)
+    err = test["y"] - pred
+    base = ((test["y"] - train["y"].mean()) ** 2).mean()
+    return {"skill": 1 - (err ** 2).mean() / base, "corr": float(np.corrcoef(pred, test["y"])[0, 1]),
+            "direction": float((np.sign(pred) == np.sign(test["y"])).mean()),
+            "inside": float((err.abs() <= m["resid_sd"]).mean()), "n_train": len(train), "n_test": len(test)}
+
+
+def validate(vals, train_end=TRAIN_END):
+    """The fair test: learn every link from data up to `train_end` only, then predict each later 3-month
+    window from what the inputs actually did, and compare with what really happened.
+    skill: how much smaller the misses are than always guessing the old average (0 = no better, 1 = perfect).
+    corr: how closely predictions follow the real moves. direction: share of up/down calls right.
+    inside: share of real outcomes inside the 68% range."""
+    X, Y = _frame(vals)
+    L = leader_moves(vals)
+    M = three_month_moves(vals, MARKETS)
+    test_start = str(pd.Period(train_end, "M") + 3)  # 3-month windows must not straddle the split
+    rows = []
+
+    def add(step, name, d, cols, lam, crash=False):
+        tr, te = d.loc[:train_end], d.loc[test_start:]
+        if crash:  # step 1 is learned and tested on normal times (COVID's job swings of millions break it)
+            tr = tr[[not any(a <= i <= b for a, b in CRASHES) for i in tr.index]]
+            te = te[[not any(a <= i <= b for a, b in CRASHES) for i in te.index]]
+        rows.append({"step": step, "result": name, **_score(tr, te, cols, lam)})
+
+    for t, (lbl, *_r) in MARKETS.items():
+        add("1", lbl, pd.concat([L, M[t].rename("y")], axis=1).loc["2003-01":].dropna(), list(LEADERS), 0.05, crash=True)
+    for t in FOLLOW:
+        add("2", INDIA[t][0], pd.concat([X[STEP2_INPUTS], X[t].rename("y")], axis=1).dropna(), STEP2_INPUTS, SHRINK)
+    for t, (lbl, *_r) in TARGETS.items():
+        add("3", lbl, pd.concat([X[RESULT_INPUTS[t]], Y[t].rename("y")], axis=1).dropna(), RESULT_INPUTS[t], SHRINK)
+    return pd.DataFrame(rows), test_start
 
 
 def implied_markets(lead_models, leaders):
@@ -232,10 +292,10 @@ def implied_markets(lead_models, leaders):
     return {m: sum(mdl["beta"][k] * leaders.get(k, 0.0) for k in LEADERS) for m, mdl in lead_models.items()}
 
 
-def implied_india(india_models, markets, brent):
-    """Rupee and India CPI moves the US markets and oil imply (step 2), without the usual drift."""
-    x = {**markets, "brent": brent}
-    return {t: sum(m["beta"][k] * x.get(k, 0.0) for k in DRIVERS) for t, m in india_models.items()}
+def implied_india(india_models, markets, brent, repo=0.0):
+    """Rupee and India CPI moves the US markets, oil and the repo rate imply (step 2), without the usual drift."""
+    x = {**markets, "brent": brent, "rbi": repo}
+    return {t: sum(m["beta"][k] * x.get(k, 0.0) for k in m["beta"]) for t, m in india_models.items()}
 
 
 def what_if(models, inputs):

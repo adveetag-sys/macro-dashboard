@@ -638,6 +638,10 @@ else:
     def sim_india_models(stamp):
         return sim.fit_india(vals)
 
+    @st.cache_data(show_spinner=False)
+    def sim_validate(stamp):
+        return sim.validate(vals)
+
     def fmt_move(x, unit):
         if x is None or (isinstance(x, float) and np.isnan(x)):
             return "—"
@@ -766,12 +770,14 @@ else:
         models, moves_hist = sim_models(stamp)
         lead_models, lead_hist = sim_lead_models(stamp)
         india_models = sim_india_models(stamp)
+        check, test_from = sim_validate(stamp)
         any_m = next(iter(models.values()))
         st.markdown("Set how much things move over the next **3 months**, in three steps like the flow chart: "
-                    "**US leaders** → **US markets** → **India** → results. Each step's sliders follow the step before "
-                    "(move the Fed and the US 10Y and dollar sliders shift with it), and you can drag any slider yourself to override. "
-                    f"Everything is learned from history: {any_m['n']} overlapping 3-month windows since {label_month(any_m['since'])} "
-                    "(step 1 from normal times only, leaving out the 2008–09 and 2020–21 crashes).")
+                    "**US leaders** → **US markets** → **India** → results. Where history shows a link that also held up on years "
+                    "it was not learned from, a slider follows the step before (move the Fed and the US 10Y shifts with it); "
+                    "you can drag any slider yourself to override. "
+                    f"Learned from {any_m['n']} overlapping 3-month windows since {label_month(any_m['since'])}; "
+                    "open **How are these numbers justified?** below for the method and the test.")
         st.caption("PMI is not a slider: the dashboard has PMI only from 2025, too short to learn from.")
 
         last_lead = lead_hist.dropna(how="all").iloc[-1]
@@ -779,6 +785,10 @@ else:
 
         def snap(v, lo, hi, step):
             return round(float(np.clip(round(v / step) * step, lo, hi)), 2)
+
+        def implied_m_follow(leaders):
+            imp = sim.implied_markets(lead_models, leaders)
+            return {k: (imp[k] if k in sim.FOLLOW_MARKETS else 0.0) for k in sim.MARKETS}
 
         b1, b2 = st.columns(2)
         if b1.button("Fill in the last 3 months' actual moves"):
@@ -791,8 +801,8 @@ else:
             for k, (_, _, _, lo, hi, step, _) in sim.INDIA.items():
                 v = last_x.get(k, np.nan)
                 ss[f"wi_{k}"] = 0.0 if np.isnan(v) else snap(v, lo, hi, step)
-            ss.wi_prev_m = sim.implied_markets(lead_models, {k: ss[f"wl_{k}"] for k in sim.LEADERS})
-            ss.wi_prev_i = sim.implied_india(india_models, {k: ss[f"wm_{k}"] for k in sim.MARKETS}, ss["wl_brent"])
+            ss.wi_prev_m = implied_m_follow({k: ss[f"wl_{k}"] for k in sim.LEADERS})
+            ss.wi_prev_i = sim.implied_india(india_models, {k: ss[f"wm_{k}"] for k in sim.MARKETS}, ss["wl_brent"], ss["wi_rbi"])
             st.rerun()
         if b2.button("Reset all to 0"):
             for k in sim.LEADERS:
@@ -816,8 +826,9 @@ else:
                 lv = last_lead.get(k, np.nan)
                 st.caption("Last 3 months: " + ("—" if np.isnan(lv) else f"{lv:+,.0f}k" if k == "jobs" else fmt_move(lv, unit)))
 
-        # Step 2: US markets follow the leaders (shift by the change in what the leaders imply)
-        imp_m = sim.implied_markets(lead_models, leaders)
+        # Step 2: US markets. Only the US 10Y follows the leaders: their link to the dollar and the S&P 500
+        # did not hold up on unseen years (see the justification section).
+        imp_m = implied_m_follow(leaders)
         prev_m = ss.get("wi_prev_m", {k: 0.0 for k in sim.MARKETS})
         for k, (_, _, _, lo, hi, step) in sim.MARKETS.items():
             ss.setdefault(f"wm_{k}", 0.0)
@@ -830,42 +841,92 @@ else:
         for col, (k, (lbl, _, unit, lo, hi, step)) in zip(cols, sim.MARKETS.items()):
             with col:
                 markets[k] = st.slider(f"{lbl} ({unit})", float(lo), float(hi), step=float(step), key=f"wm_{k}")
-                st.caption(f"Leaders imply {fmt_move(imp_m[k], unit)} · last 3 months: {fmt_move(last_x.get(k, np.nan), unit)}")
+                lead_txt = (f"Leaders imply {fmt_move(imp_m[k], unit)}" if k in sim.FOLLOW_MARKETS
+                            else "Set this yourself: the leaders did not predict it on unseen years")
+                st.caption(f"{lead_txt} · last 3 months: {fmt_move(last_x.get(k, np.nan), unit)}")
 
-        # Step 3: India follows the markets (rupee and CPI); the repo is the user's call
-        imp_i = sim.implied_india(india_models, markets, leaders["brent"])
-        prev_i = ss.get("wi_prev_i", {k: 0.0 for k in sim.FOLLOW})
-        for k, (_, _, _, lo, hi, step, _) in sim.INDIA.items():
-            ss.setdefault(f"wi_{k}", 0.0)
-            if k in sim.FOLLOW and abs(imp_i[k] - prev_i.get(k, 0.0)) > 1e-9:
-                ss[f"wi_{k}"] = snap(ss[f"wi_{k}"] + imp_i[k] - prev_i.get(k, 0.0), lo, hi, step)
-        ss.wi_prev_i = imp_i
+        # Step 3: India. The repo is the user's call; the rupee and India CPI follow the markets, oil and the repo.
         st.markdown("<p class='cap'>Step 3 · India (total move)</p>", unsafe_allow_html=True)
         india = {}
         cols = st.columns(3)
-        for col, (k, (lbl, _, unit, lo, hi, step, hint)) in zip(cols, sim.INDIA.items()):
+        lbl, _, unit, lo, hi, step, hint = sim.INDIA["rbi"]
+        with cols[0]:
+            ss.setdefault("wi_rbi", 0.0)
+            india["rbi"] = st.slider(f"{lbl} ({unit})", float(lo), float(hi), step=float(step), key="wi_rbi", help=hint)
+            st.caption(f"Your call: history barely predicts RBI moves · last 3 months: {fmt_move(last_x.get('rbi', np.nan), unit)}")
+        imp_i = sim.implied_india(india_models, markets, leaders["brent"], india["rbi"])
+        prev_i = ss.get("wi_prev_i", {k: 0.0 for k in sim.FOLLOW})
+        for k in sim.FOLLOW:
+            _, _, _, lo, hi, step, _ = sim.INDIA[k]
+            ss.setdefault(f"wi_{k}", 0.0)
+            if abs(imp_i[k] - prev_i.get(k, 0.0)) > 1e-9:
+                ss[f"wi_{k}"] = snap(ss[f"wi_{k}"] + imp_i[k] - prev_i.get(k, 0.0), lo, hi, step)
+        ss.wi_prev_i = imp_i
+        for col, k in zip(cols[1:], sim.FOLLOW):
+            lbl, _, unit, lo, hi, step, hint = sim.INDIA[k]
             with col:
                 india[k] = st.slider(f"{lbl} ({unit})", float(lo), float(hi), step=float(step), key=f"wi_{k}", help=hint)
-                lead_txt = (f"Markets and oil imply {fmt_move(imp_i[k], unit)}" + (f" (fit {india_models[k]['r2']:.0%})" if k == "inCpi" else "")
-                            if k in sim.FOLLOW else "Your call: history barely predicts RBI moves")
-                st.caption(f"{lead_txt} · last 3 months: {fmt_move(last_x.get(k, np.nan), unit)}" + (" · + = rupee weaker" if k == "inr" else ""))
+                repo_part = india_models[k]["beta"]["rbi"] * india["rbi"]
+                st.caption(f"Markets, oil and repo imply {fmt_move(imp_i[k], unit)}"
+                           + (f" (repo's part {fmt_move(repo_part, unit)})" if india["rbi"] else "")
+                           + f" · last 3 months: {fmt_move(last_x.get(k, np.nan), unit)}" + (" · + = rupee weaker" if k == "inr" else ""))
 
         res = sim.what_if(models, {**markets, "brent": leaders["brent"], **india})
         names = {**{k: v[0].split(" (")[0] for k, v in sim.DRIVERS.items()}, **{k: v[0] for k, v in sim.INDIA.items()}}
+        tested = check[check["step"] == "3"].set_index("result")
         html = ["<table style='width:100%;border-collapse:collapse;font-size:14px'>",
                 "<tr style='text-align:left;color:#A3ADBF'><th style='padding:6px'>Result</th><th>Expected 3-month move</th><th>Likely range (68%)</th>"
-                "<th>Biggest pushes</th><th>How much history explains</th></tr>"]
+                f"<th>Biggest pushes</th><th>Tested on {test_from[:4]}–{months[-1][:4]}</th></tr>"]
         for t, (lbl, _, unit, note) in sim.TARGETS.items():
-            r, mdl = res[t], models[t]
+            r = res[t]
             parts = sorted(r["parts"].items(), key=lambda kv: -abs(kv[1]))
             pushes = ", ".join(f"{names[k]} {fmt_move(v, unit)}" for k, v in parts[:3]
                                if abs(v) >= {"%": 0.05, "pts": 0.005, "₹ cr": 50}[unit]) or "—"
+            tv = tested.loc[lbl] if lbl in tested.index else None
+            test_txt = "—" if tv is None else (f"direction right {tv['direction']:.0%} · range held {tv['inside']:.0%}"
+                                                 + (" · sizes unreliable" if tv["skill"] < 0.1 else ""))
             html.append(f"<tr style='border-top:1px solid #1F2A44'><td style='padding:6px'>{lbl}<div class='muted' style='font-size:12px'>{note}</div></td>"
                         f"<td><b>{fmt_move(r['mid'], unit)}</b></td><td>{fmt_move(r['lo'], unit)} to {fmt_move(r['hi'], unit)}</td>"
-                        f"<td class='muted'>{pushes}</td><td>{mdl['r2']:.0%}</td></tr>")
+                        f"<td class='muted'>{pushes}</td><td class='muted' style='font-size:13px'>{test_txt}</td></tr>")
         html.append("</table>")
         with st.container(border=True):
             st.markdown("".join(html), unsafe_allow_html=True)
+
+        with st.expander("How are these numbers justified?"):
+            st.markdown(
+                "**Where the numbers come from.** Every link is measured from this dashboard's own data: for each month since 2005, "
+                "how much each item moved over 3 months, set side by side with how much the inputs moved over the same 3 months. "
+                "A regression then finds the typical move per unit of each input, *holding the other inputs fixed*. "
+                "The regression is **ridge regression**: plain least squares gave effects that flipped sign between 2005–16 and 2017–26 "
+                "(the inputs overlap: a weak rupee usually comes with a strong dollar), so effects are shrunk toward zero until they are stable. "
+                "Step 1 leaves out the 2008–09 and 2020–21 crashes, where job swings of millions would swamp everything else.\n\n"
+                "**The likely range** is the typical size of the miss on past data: about 2 times in 3 the real move landed inside it.\n\n"
+                f"**The fair test.** Fitting and judging on the same years flatters any model. So every link was re-learned from data up to "
+                f"{label_month(sim.TRAIN_END)} only, then used to predict each 3-month window from {label_month(test_from)} on, from what the inputs "
+                "actually did, and compared with what really happened:")
+            show = check.copy()
+            show["Step"] = show["step"].map({"1": "1 · leaders → markets", "2": "2 · → rupee, CPI", "3": "3 · → results"})
+            show["Follows real moves (corr)"] = show["corr"].map(lambda x: f"{x:+.2f}")
+            show["Better than guessing the average"] = show["skill"].map(lambda x: f"{x:.0%}" if x > 0 else "no")
+            show["Direction right"] = show["direction"].map(lambda x: f"{x:.0%}")
+            show["Inside 68% range"] = show["inside"].map(lambda x: f"{x:.0%}")
+            show["Verdict"] = [("useful: size and direction" if r.skill >= 0.1 and r.corr >= 0.4 else
+                                "direction only" if r.corr >= 0.25 and r.direction >= 0.55 else
+                                "which way each input pushes only; overall level off" if r.corr >= 0.25 else "no reliable link")
+                               for r in show.itertuples()]
+            st.dataframe(show[["Step", "result", "Follows real moves (corr)", "Better than guessing the average", "Direction right",
+                               "Inside 68% range", "Verdict"]].rename(columns={"result": "Predicts"}), hide_index=True, width="stretch")
+            st.markdown(
+                "**What that means for the sliders.**\n"
+                "- **Nifty** is the strongest: it beat the plain average on unseen years and its ranges held. Use its size and direction.\n"
+                "- **India 10Y** is modestly useful; it uses only its real drivers (US 10Y, repo, CPI), because with every input it did worse than the average.\n"
+                "- **FII flows** only show which way each input pushes (a stronger dollar means more selling, and so on). The overall level is off: "
+                "flows are far bigger now than before 2017, so the predictions sat too low and even got up/down wrong most of the time.\n"
+                "- **Rupee** follows the US markets and the repo in the right direction, but its average drift changed, so the size is rough.\n"
+                "- **India CPI** barely follows the US side; the repo's pull on it is small.\n"
+                "- **Leaders → US 10Y** carries a small real signal, so the US 10Y slider follows the leaders. "
+                "**Leaders → dollar and S&P 500** did not hold up at all, so those sliders do not follow; set them yourself.\n\n"
+                "These are average relationships, not cause and effect, and they can shift again (for example, DIIs now absorb far more FII selling than before 2020).")
 
         with st.expander("Rules of thumb behind this"):
             st.markdown("**Step 1 · US markets vs the leaders** (normal times, each leader moving alone)")
@@ -874,23 +935,22 @@ else:
                 one, one_lbl = {"jobs": (100, "+100k/month"), "brent": (10, "+10%"), "fedBs": (10, "+10%")}.get(k, (1, "+1 pt"))
                 row = {"Leader": f"{lbl} {one_lbl}"}
                 for mk, (ml, _, mu, *_m) in sim.MARKETS.items():
-                    row[ml.split(" (")[0]] = fmt_move(lead_models[mk]["beta"][k] * one, mu)
+                    row[ml.split(" (")[0]] = fmt_move(lead_models[mk]["beta"][k] * one, mu) + ("" if mk in sim.FOLLOW_MARKETS else " (not used)")
                 rows.append(row)
-            rows.append({"Leader": "How much leaders explain", **{ml.split(" (")[0]: f"{lead_models[mk]['r2']:.0%}" for mk, (ml, *_m) in sim.MARKETS.items()}})
             st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
-            def unit_one(du):
-                return (1.0, "+1 pt") if du == "pts" else (10.0, "+10%") if du == "%" else (1.0, "+1")
+            def per_unit(k, du):
+                return (1.0, "+1 pt") if du == "pts" else (5.0, "+5%") if k == "inr" else (10.0, "+10%")
 
-            st.markdown("**Step 2 · rupee and India CPI vs US markets and oil** (each moving alone)")
+            spec_all = {**sim.DRIVERS, **{k: v for k, v in sim.INDIA.items()}}
+            st.markdown("**Step 2 · rupee and India CPI vs US markets, oil and the repo** (each moving alone)")
             rows = []
             for t in sim.FOLLOW:
                 lbl, _, unit, *_r = sim.INDIA[t]
                 row = {"India": lbl}
-                for k, (dl, _, du, *_d) in sim.DRIVERS.items():
-                    one, ol = unit_one(du)
-                    row[f"{dl.split(' (')[0]} {ol}"] = fmt_move(india_models[t]["beta"][k] * one, unit)
-                row["How much explained"] = f"{india_models[t]['r2']:.0%}"
+                for k in sim.STEP2_INPUTS:
+                    one, ol = per_unit(k, spec_all[k][2])
+                    row[f"{names[k]} {ol}"] = fmt_move(india_models[t]["beta"][k] * one, unit)
                 rows.append(row)
             st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
@@ -899,20 +959,15 @@ else:
             for t, (lbl, _, unit, _) in sim.TARGETS.items():
                 mdl = models[t]
                 row = {"Result": lbl, "With nothing moving": fmt_move(mdl["const"], unit)}
-                for k, spec in {**sim.DRIVERS, **sim.INDIA}.items():
-                    du = spec[2]
-                    one = 1.0 if du == "pts" else 5.0 if k == "inr" else 10.0
-                    ol = "+1 pt" if du == "pts" else "+5%" if k == "inr" else "+10%"
-                    row[f"{names[k]} {ol}"] = fmt_move(mdl["beta"][k] * one, unit)
+                for k in list(sim.DRIVERS) + list(sim.INDIA):
+                    one, ol = per_unit(k, spec_all[k][2])
+                    row[f"{names[k]} {ol}"] = fmt_move(mdl["beta"][k] * one, unit) if k in mdl["beta"] else "not used"
                 rows.append(row)
             st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
             st.caption("'With nothing moving' is the typical drift of a 3-month window (Nifty has tended to rise). "
-                       "In step 3 the US 10Y can show a small plus for Nifty: once the rupee is held fixed, a rising US 10Y has often meant a growing world economy.")
-        st.caption("Leaders matter mostly through their surprise versus what markets expected, which monthly numbers only partly capture, "
-                   "so step 1 explains only 6–18% of market moves. 'How much history explains' is the share of past 3-month moves accounted for (R²): "
-                   "about 50% for Nifty and 38% for India 10Y; FII flows depend mostly on other things, so their range is wide. The 68% range covers step 3 only, "
-                   "since you set the India sliders directly. These are relationships that held on average, not cause and effect, and they shift over time "
-                   "(for example, DIIs now absorb much more FII selling than before 2020).")
+                       "In step 3 the US 10Y can show a plus for Nifty: once the rupee and the dollar are held fixed, a rising US 10Y has often meant a growing world economy. "
+                       "The repo's own pull on Nifty is close to zero; most of a hike's effect comes through the rupee and CPI.")
+        st.caption("These are relationships that held on average, not cause and effect. The 68% range covers step 3 only, since you set the India sliders directly.")
 
 st.caption(f"Sources: FRED, Yahoo Finance, RBI, MoSPI, NSE and MSEI (FII/DII). Missing indicators: {', '.join(meta.get('missing_indicators', [])) or 'none'}. "
            "Tailwind/headwind labels come from simple rules in config.py, not from a forecast.")
