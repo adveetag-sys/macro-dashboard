@@ -35,9 +35,9 @@
   "date": "2026-11-25"
  },
  "us10": {
-  "label": "24 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-24"
+  "date": "2026-11-25"
  },
  "in10y": {
   "label": "Oct 2026",
@@ -105,24 +105,24 @@
   "date": "2026-06-01"
  },
  "nifty": {
-  "label": "25 Nov 2026",
+  "label": "23 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-25"
+  "date": "2026-11-23"
  },
  "bank": {
+  "label": "23 Nov 2026",
+  "freq": "daily",
+  "date": "2026-11-23"
+ },
+ "sp": {
   "label": "25 Nov 2026",
   "freq": "daily",
   "date": "2026-11-25"
  },
- "sp": {
-  "label": "24 Nov 2026",
-  "freq": "daily",
-  "date": "2026-11-24"
- },
  "ndx": {
-  "label": "24 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-24"
+  "date": "2026-11-25"
  },
  "gold": {
   "label": "25 Nov 2026",
@@ -140,8 +140,8 @@
   "date": "2026-11-25"
  },
  "inVix": {
-  "label": "25 Nov 2026",
+  "label": "23 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-25"
+  "date": "2026-11-23"
  }
 }
