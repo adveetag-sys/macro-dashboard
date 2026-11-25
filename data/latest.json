@@ -30,9 +30,9 @@
   "date": "2026-11-18"
  },
  "brent": {
-  "label": "24 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-24"
+  "date": "2026-11-25"
  },
  "us10": {
   "label": "24 Nov 2026",
@@ -50,9 +50,9 @@
   "date": "2026-10-01"
  },
  "dxy": {
-  "label": "24 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-24"
+  "date": "2026-11-25"
  },
  "usRes": {
   "label": "18 Nov 2026",
@@ -64,15 +64,15 @@
   "freq": "monthly",
   "date": "2026-11-01",
   "last_day": {
-   "label": "23 Nov",
-   "fii": 5672.99,
-   "dii": -2760.12
+   "label": "25 Nov",
+   "fii": 4479.08,
+   "dii": 4018.72
   }
  },
  "inr": {
-  "label": "24 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-24"
+  "date": "2026-11-25"
  },
  "rbi": {
   "label": "Nov 2026",
@@ -105,14 +105,14 @@
   "date": "2026-06-01"
  },
  "nifty": {
-  "label": "23 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-23"
+  "date": "2026-11-25"
  },
  "bank": {
-  "label": "23 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-23"
+  "date": "2026-11-25"
  },
  "sp": {
   "label": "24 Nov 2026",
@@ -125,23 +125,23 @@
   "date": "2026-11-24"
  },
  "gold": {
-  "label": "24 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-24"
+  "date": "2026-11-25"
  },
  "silver": {
-  "label": "24 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-24"
+  "date": "2026-11-25"
  },
  "vix": {
-  "label": "24 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-24"
+  "date": "2026-11-25"
  },
  "inVix": {
-  "label": "23 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-23"
+  "date": "2026-11-25"
  }
 }
