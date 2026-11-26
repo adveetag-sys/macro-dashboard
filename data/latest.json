@@ -64,9 +64,9 @@
   "freq": "monthly",
   "date": "2026-11-01",
   "last_day": {
-   "label": "25 Nov",
-   "fii": 4479.08,
-   "dii": 4018.72
+   "label": "26 Nov",
+   "fii": 5843.33,
+   "dii": 5630.72
   }
  },
  "inr": {
@@ -105,14 +105,14 @@
   "date": "2026-06-01"
  },
  "nifty": {
-  "label": "26 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-26"
+  "date": "2026-11-25"
  },
  "bank": {
-  "label": "26 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-26"
+  "date": "2026-11-25"
  },
  "sp": {
   "label": "25 Nov 2026",
@@ -140,8 +140,8 @@
   "date": "2026-11-26"
  },
  "inVix": {
-  "label": "26 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-26"
+  "date": "2026-11-25"
  }
 }
