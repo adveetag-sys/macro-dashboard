@@ -20,14 +20,14 @@
   "date": "2026-07-01"
  },
  "fed": {
-  "label": "24 Nov 2026",
+  "label": "26 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-24"
+  "date": "2026-11-26"
  },
  "fedBs": {
-  "label": "18 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "weekly",
-  "date": "2026-11-18"
+  "date": "2026-11-25"
  },
  "brent": {
   "label": "27 Nov 2026",
@@ -55,9 +55,9 @@
   "date": "2026-11-27"
  },
  "usRes": {
-  "label": "18 Nov 2026",
+  "label": "25 Nov 2026",
   "freq": "weekly",
-  "date": "2026-11-18"
+  "date": "2026-11-25"
  },
  "fii": {
   "label": "Nov 2026",
