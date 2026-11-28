@@ -70,9 +70,9 @@
   }
  },
  "inr": {
-  "label": "27 Nov 2026",
+  "label": "28 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-27"
+  "date": "2026-11-28"
  },
  "rbi": {
   "label": "Nov 2026",
@@ -105,14 +105,14 @@
   "date": "2026-06-01"
  },
  "nifty": {
-  "label": "26 Nov 2026",
+  "label": "27 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-26"
+  "date": "2026-11-27"
  },
  "bank": {
-  "label": "26 Nov 2026",
+  "label": "27 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-26"
+  "date": "2026-11-27"
  },
  "sp": {
   "label": "27 Nov 2026",
@@ -140,8 +140,8 @@
   "date": "2026-11-27"
  },
  "inVix": {
-  "label": "26 Nov 2026",
+  "label": "27 Nov 2026",
   "freq": "daily",
-  "date": "2026-11-26"
+  "date": "2026-11-27"
  }
 }
